@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date
+from statistics import median
 
 from backend.app.models.price import PriceRecord
 from backend.app.services.bitcoin_cycle import BitcoinCycleResult, calculate_bitcoin_cycle
@@ -20,6 +21,20 @@ class BitcoinBacktestPoint:
     future_return_730d_pct: float | None
     future_max_gain_365d_pct: float | None
     future_max_drawdown_365d_pct: float | None
+
+
+@dataclass(frozen=True, slots=True)
+class BacktestBandSummary:
+    band: str
+    count: int
+    median_return_180d_pct: float | None
+    median_return_365d_pct: float | None
+    median_return_730d_pct: float | None
+    positive_365d_rate_pct: float | None
+    gain_50pct_365d_rate_pct: float | None
+    drawdown_30pct_365d_rate_pct: float | None
+    median_max_gain_365d_pct: float | None
+    median_max_drawdown_365d_pct: float | None
 
 
 def _future_return(prices: list[float], index: int, days: int) -> float | None:
@@ -96,3 +111,87 @@ def nearest_backtest_point(
     if not points:
         return None
     return min(points, key=lambda point: abs((point.as_of - target).days))
+
+
+def _median(values: list[float]) -> float | None:
+    return median(values) if values else None
+
+
+def _rate(values: list[float], predicate) -> float | None:  # type: ignore[no-untyped-def]
+    if not values:
+        return None
+    return sum(1 for value in values if predicate(value)) / len(values) * 100
+
+
+def summarize_score_bands(
+    points: list[BitcoinBacktestPoint],
+    *,
+    score_name: str,
+) -> list[BacktestBandSummary]:
+    """Summarize realized future outcomes for fixed 20-point score bands.
+
+    This is a validation-only view. Future outcomes never feed back into the
+    score calculation. Bands are fixed before looking at outcomes so the report
+    is easier to compare between model revisions.
+    """
+    if score_name not in {"opportunity_score", "overheat_score"}:
+        raise ValueError("score_name must be opportunity_score or overheat_score")
+
+    bands = (
+        (0, 19, "00-19"),
+        (20, 39, "20-39"),
+        (40, 59, "40-59"),
+        (60, 79, "60-79"),
+        (80, 100, "80-100"),
+    )
+
+    summaries: list[BacktestBandSummary] = []
+    for low, high, label in bands:
+        selected = [
+            point
+            for point in points
+            if low <= int(getattr(point, score_name)) <= high
+        ]
+
+        r180 = [
+            point.future_return_180d_pct
+            for point in selected
+            if point.future_return_180d_pct is not None
+        ]
+        r365 = [
+            point.future_return_365d_pct
+            for point in selected
+            if point.future_return_365d_pct is not None
+        ]
+        r730 = [
+            point.future_return_730d_pct
+            for point in selected
+            if point.future_return_730d_pct is not None
+        ]
+        gains = [
+            point.future_max_gain_365d_pct
+            for point in selected
+            if point.future_max_gain_365d_pct is not None
+        ]
+        drawdowns = [
+            point.future_max_drawdown_365d_pct
+            for point in selected
+            if point.future_max_drawdown_365d_pct is not None
+        ]
+
+        summaries.append(
+            BacktestBandSummary(
+                band=label,
+                count=len(selected),
+                median_return_180d_pct=_median(r180),
+                median_return_365d_pct=_median(r365),
+                median_return_730d_pct=_median(r730),
+                positive_365d_rate_pct=_rate(r365, lambda value: value > 0),
+                gain_50pct_365d_rate_pct=_rate(r365, lambda value: value >= 50),
+                drawdown_30pct_365d_rate_pct=_rate(drawdowns, lambda value: value <= -30),
+                median_max_gain_365d_pct=_median(gains),
+                median_max_drawdown_365d_pct=_median(drawdowns),
+            )
+        )
+
+    return summaries
