@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import csv
+import io
 from datetime import date, datetime
+from math import sqrt
 from typing import Callable
 from urllib.parse import urlencode
 
@@ -14,6 +17,7 @@ from backend.app.models.onchain import BitcoinOnChainRecord
 
 
 COMMUNITY_BASE_URL = "https://community-api.coinmetrics.io/v4"
+ARCHIVE_BTC_CSV_URL = "https://raw.githubusercontent.com/coinmetrics/data/refs/heads/master/csv/btc.csv"
 DEFAULT_METRICS = (
     "PriceUSD",
     "CapMVRVCur",
@@ -33,10 +37,15 @@ def _parse_optional_float(value: object) -> float | None:
 
 
 class CoinMetricsCommunityProvider:
-    """Fetch free daily Bitcoin asset metrics from Coin Metrics Community API.
+    """Fetch free daily Bitcoin on-chain valuation metrics.
 
-    The provider intentionally requests raw metrics only. Research services decide
-    later how, or whether, to combine them.
+    Primary source: Coin Metrics Community API.
+    Fallback source: Coin Metrics' public daily GitHub CSV archive. The archive
+    currently includes PriceUSD, CapMrktCurUSD and CapMVRVCur for BTC. When the
+    API host cannot be reached, Realized Cap and NUPL are reconstructed exactly
+    from the documented MVRV identities, and MVRV Z-Score is reconstructed from
+    the documented formula using an expanding historical standard deviation of
+    market cap. The fallback remains transparent and research-only.
     """
 
     def __init__(
@@ -45,10 +54,12 @@ class CoinMetricsCommunityProvider:
         base_url: str = COMMUNITY_BASE_URL,
         timeout_seconds: int = 30,
         fetch_json: Callable[[str], dict] | None = None,
+        allow_archive_fallback: bool = True,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.timeout_seconds = timeout_seconds
         self._fetch_json_override = fetch_json
+        self.allow_archive_fallback = allow_archive_fallback
 
         retry = Retry(
             total=4,
@@ -66,7 +77,7 @@ class CoinMetricsCommunityProvider:
         self._session.headers.update(
             {
                 "User-Agent": "hunter3-bitcoin-research/1.0",
-                "Accept": "application/json",
+                "Accept": "application/json,text/csv;q=0.9,*/*;q=0.8",
                 "Connection": "close",
             }
         )
@@ -81,8 +92,7 @@ class CoinMetricsCommunityProvider:
             raise RuntimeError(
                 "Could not connect to Coin Metrics Community API. "
                 "This can be caused by a transient TLS/network reset, VPN/firewall filtering, "
-                "or the remote service closing the connection. Try again once; if it persists, "
-                "test the community-api.coinmetrics.io host from your browser/curl."
+                "or the remote service closing the connection."
             ) from exc
 
         if response.status_code in {401, 403}:
@@ -93,9 +103,7 @@ class CoinMetricsCommunityProvider:
             )
         if not response.ok:
             body = response.text[:500].replace("\n", " ")
-            raise RuntimeError(
-                f"Coin Metrics returned HTTP {response.status_code}: {body}"
-            )
+            raise RuntimeError(f"Coin Metrics returned HTTP {response.status_code}: {body}")
 
         try:
             payload = response.json()
@@ -105,15 +113,12 @@ class CoinMetricsCommunityProvider:
             raise RuntimeError("Coin Metrics returned an unexpected response shape")
         return payload
 
-    def get_bitcoin_daily_metrics(
+    def _get_from_api(
         self,
         *,
         start_date: date,
         end_date: date,
     ) -> list[BitcoinOnChainRecord]:
-        if end_date < start_date:
-            raise ValueError("end_date must be on or after start_date")
-
         params = {
             "assets": "btc",
             "metrics": ",".join(DEFAULT_METRICS),
@@ -148,3 +153,99 @@ class CoinMetricsCommunityProvider:
 
         rows.sort(key=lambda item: item.date)
         return rows
+
+    def _get_from_archive(
+        self,
+        *,
+        start_date: date,
+        end_date: date,
+    ) -> list[BitcoinOnChainRecord]:
+        try:
+            response = self._session.get(ARCHIVE_BTC_CSV_URL, timeout=max(self.timeout_seconds, 60))
+            response.raise_for_status()
+        except requests.RequestException as exc:
+            raise RuntimeError(
+                "Coin Metrics API failed and the public Coin Metrics GitHub CSV fallback could "
+                "not be downloaded either."
+            ) from exc
+
+        reader = csv.DictReader(io.StringIO(response.text))
+        required = {"time", "PriceUSD", "CapMrktCurUSD", "CapMVRVCur"}
+        missing = required.difference(reader.fieldnames or [])
+        if missing:
+            raise RuntimeError(
+                "Coin Metrics BTC archive is missing required columns: " + ", ".join(sorted(missing))
+            )
+
+        rows: list[BitcoinOnChainRecord] = []
+        count = 0
+        mean_market_cap = 0.0
+        m2_market_cap = 0.0
+
+        for item in reader:
+            day = date.fromisoformat(str(item["time"]))
+            market_cap = _parse_optional_float(item.get("CapMrktCurUSD"))
+
+            # Update expanding market-cap volatility before calculating today's
+            # Z-score, so the fallback uses information available through today
+            # and never future observations.
+            if market_cap is not None:
+                count += 1
+                delta = market_cap - mean_market_cap
+                mean_market_cap += delta / count
+                m2_market_cap += delta * (market_cap - mean_market_cap)
+
+            if not (start_date <= day <= end_date):
+                continue
+
+            price = _parse_optional_float(item.get("PriceUSD"))
+            mvrv = _parse_optional_float(item.get("CapMVRVCur"))
+            realized_cap = None
+            nupl = None
+            mvrv_z = None
+
+            if market_cap is not None and mvrv is not None and mvrv > 0:
+                # Coin Metrics definition: MVRV = market cap / realized cap.
+                realized_cap = market_cap / mvrv
+                # Coin Metrics definition: NUPL = (market cap - realized cap) / market cap.
+                if market_cap > 0:
+                    nupl = (market_cap - realized_cap) / market_cap
+
+                # Coin Metrics definition: MVRV Z =
+                # (market cap - realized cap) / std(market cap).
+                # The archive does not include CapMVRVZ, so use an expanding
+                # population standard deviation to preserve no-look-ahead behavior.
+                if count > 1:
+                    std_market_cap = sqrt(m2_market_cap / count)
+                    if std_market_cap > 0:
+                        mvrv_z = (market_cap - realized_cap) / std_market_cap
+
+            rows.append(
+                BitcoinOnChainRecord(
+                    date=day,
+                    price_usd=price,
+                    mvrv=mvrv,
+                    mvrv_z=mvrv_z,
+                    realized_cap_usd=realized_cap,
+                    nupl=nupl,
+                )
+            )
+
+        rows.sort(key=lambda item: item.date)
+        return rows
+
+    def get_bitcoin_daily_metrics(
+        self,
+        *,
+        start_date: date,
+        end_date: date,
+    ) -> list[BitcoinOnChainRecord]:
+        if end_date < start_date:
+            raise ValueError("end_date must be on or after start_date")
+
+        try:
+            return self._get_from_api(start_date=start_date, end_date=end_date)
+        except RuntimeError:
+            if not self.allow_archive_fallback or self._fetch_json_override is not None:
+                raise
+            return self._get_from_archive(start_date=start_date, end_date=end_date)
