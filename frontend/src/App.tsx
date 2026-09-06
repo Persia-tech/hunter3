@@ -18,6 +18,7 @@ import {
   Sparkles,
   TrendingUp,
   ThermometerSun,
+  Trash2,
   WalletCards,
   X,
 } from 'lucide-react';
@@ -700,7 +701,7 @@ function Temperature({ onHome }: { onHome: () => void }) {
   useEffect(() => { api.temperatures().then(setData).catch((reason) => setError(reason.message)); }, []);
   if (error) return <ErrorState message={error} home={onHome} />;
   if (!data) return <LoadingState />;
-  return <div className="page-enter markets-page"><header className="screen-header"><p className="eyebrow">MARKET TEMPERATURE</p><h1>Long-term conditions</h1><p>Opportunity, heat, drawdown, and trend remain separate signals.</p></header><div className="temperature-list">{data.map((item) => <article className="temperature-card" key={item.symbol}><div className="ranking-topline"><AssetMark symbol={item.symbol}/><span className="asset-copy"><strong>{item.symbol}</strong><small>{item.name}</small></span><strong>{item.classification}</strong></div><div className="temperature-scores"><span><small>Opportunity</small><strong>{item.opportunity_score}</strong></span><span><small>Overheat</small><strong>{item.overheat_score}</strong></span><span><small>Drawdown</small><strong>{item.drawdown_percent.toFixed(1)}%</strong></span></div><p>{item.trend} · Weekly RSI {item.weekly_rsi?.toFixed(1) ?? '—'} · {item.history_status}</p></article>)}</div>{!data.length && <p className="inline-empty">No stored snapshots yet. Run the scheduler first.</p>}</div>;
+  return <div className="page-enter markets-page"><header className="screen-header"><p className="eyebrow">MARKET TEMPERATURE</p><h1>Long-term conditions</h1><p>Three distinct signals, designed for patient decisions.</p></header><div className="temperature-list">{data.map((item) => <article className="temperature-card" key={item.symbol}><div className="temperature-heading"><AssetMark symbol={item.symbol}/><span className="asset-copy"><strong>{item.symbol}</strong><small>{item.name}</small></span><span className="classification">{item.classification}</span></div><div className="temperature-scores"><span className="opportunity"><small>Opportunity</small><strong>{item.opportunity_score}<em>/100</em></strong></span><span className="overheat"><small>Overheat</small><strong>{item.overheat_score}<em>/100</em></strong></span></div><div className="signal-summary"><span><small>Drawdown zone</small><strong>{item.drawdown_percent.toFixed(1)}%</strong></span><span><small>Trend</small><strong>{item.trend}</strong></span></div><details><summary>Technical details</summary><div className="technical-grid"><span>Weekly RSI <strong>{item.weekly_rsi?.toFixed(1) ?? '—'}</strong></span><span>Stochastic RSI <strong>{item.stochastic_rsi?.toFixed(1) ?? '—'}</strong></span><span>200W distance <strong>{item.distance_200w_percent?.toFixed(1) ?? '—'}%</strong></span><span>12M momentum <strong>{item.momentum_12m == null ? '—' : percent(String(item.momentum_12m * 100))}</strong></span><span>Divergence <strong>{item.divergence}</strong></span><span>Recovery <strong>{item.recovery_signal ? 'Detected' : 'Not detected'}</strong></span></div></details><p className="freshness">Updated {new Date(item.as_of).toLocaleString()} · {item.history_status} history</p></article>)}</div>{!data.length && <section className="surface premium-empty"><ThermometerSun aria-hidden="true"/><h2>No market snapshot yet</h2><p>Signals will appear after the next market update.</p><button className="button secondary" onClick={onHome}>Return home</button></section>}</div>;
 }
 
 function Alerts({ onHome }: { onHome: () => void }) {
@@ -715,26 +716,32 @@ function Alerts({ onHome }: { onHome: () => void }) {
   const create = () => api.createAlert({scope_type:'symbol',scope_value:symbol,metric:'opportunity_score',operator:'above_or_equal',numeric_value:Number(value),notify_on_enter:true,notify_on_exit:false,cooldown_minutes:60,delivery_channel:'telegram'}).then(load).catch((reason) => setError(reason.message));
   if (error) return <ErrorState message={error} retry={() => {setError('');load();}} home={onHome}/>;
   if (!rules) return <LoadingState/>;
-  return <div className="page-enter markets-page"><header className="screen-header"><p className="eyebrow">ALERTS</p><h1>Telegram alerts</h1><p>Notifications fire on state transitions, subject to cooldown.</p></header><section className="surface alert-builder"><label>Symbol<input value={symbol} onChange={(event)=>setSymbol(event.target.value.toUpperCase())}/></label><label>Opportunity at least<input type="number" min="0" max="100" value={value} onChange={(event)=>setValue(event.target.value)}/></label><button className="button primary" onClick={create}>Create alert</button></section><div className="alert-list">{rules.map((rule)=><article className="market-row" key={rule.id}><span className="asset-copy"><strong>{rule.scope_value ?? 'All assets'}</strong><small>{rule.metric} {rule.operator} {rule.numeric_value ?? rule.text_value}</small></span><button className="button tertiary" onClick={()=>api.setAlertEnabled(rule.id,!rule.enabled).then(load)}>{rule.enabled?'Pause':'Enable'}</button><button className="button tertiary" onClick={()=>api.deleteAlert(rule.id).then(load)}>Delete</button></article>)}</div></div>;
+  return <div className="page-enter markets-page"><header className="screen-header"><p className="eyebrow">ALERTS</p><h1>Stay informed, calmly</h1><p>Hunter sends a Telegram message only when your signal changes.</p></header><section className="surface alert-builder"><p className="natural-alert">Alert me when <label><span className="sr-only">Asset symbol</span><input value={symbol} onChange={(event)=>setSymbol(event.target.value.toUpperCase())}/></label> Opportunity reaches <label><span className="sr-only">Opportunity score</span><input type="number" min="0" max="100" value={value} onChange={(event)=>setValue(event.target.value)}/></label></p><button className="button primary" onClick={create}>Create alert</button></section>{rules.length ? <div className="alert-list">{rules.map((rule)=><article className="alert-card" key={rule.id}><span className={`status-dot ${rule.enabled?'enabled':'paused'}`} aria-label={rule.enabled?'Enabled':'Paused'} /><span className="asset-copy"><strong>{rule.scope_value ?? 'All assets'}</strong><small>Opportunity reaches {rule.numeric_value ?? rule.text_value}</small></span><button className="button tertiary" onClick={()=>api.setAlertEnabled(rule.id,!rule.enabled).then(load)}>{rule.enabled?'Pause':'Enable'}</button><button className="delete-button" aria-label={`Delete alert for ${rule.scope_value ?? 'all assets'}`} onClick={()=>api.deleteAlert(rule.id).then(load)}><Trash2 aria-hidden="true"/></button></article>)}</div> : <section className="surface premium-empty"><Bell aria-hidden="true"/><h2>No alerts yet</h2><p>Create a signal alert and Hunter will keep watch for you.</p></section>}</div>;
 }
 
 const FEATURES = [
-  { screen: 'dca' as Screen, title: 'DCA Calculator', description: 'Build a consistent investing scenario', icon: TrendingUp, tone: 'blue' },
-  { screen: 'compare' as Screen, title: 'Compare Assets', description: 'Rank historical outcomes on equal terms', icon: ArrowLeftRight, tone: 'indigo' },
-  { screen: 'lump' as Screen, title: 'DCA vs Lump Sum', description: 'Explore two ways to deploy capital', icon: WalletCards, tone: 'slate' },
-  { screen: 'markets' as Screen, title: 'Market Prices', description: 'View the latest cached snapshot', icon: BarChart3, tone: 'graphite' },
-  { screen: 'temperature' as Screen, title: 'Market Temperature', description: 'Read opportunity, heat, and trend signals', icon: ThermometerSun, tone: 'indigo' },
-  { screen: 'alerts' as Screen, title: 'Alerts', description: 'Manage Telegram transition alerts', icon: Bell, tone: 'slate' },
+  { screen: 'dca' as Screen, title: 'DCA Calculator', description: 'Build a consistent investing plan', icon: TrendingUp, tone: 'blue' },
+  { screen: 'compare' as Screen, title: 'Compare Assets', description: 'Compare long-term outcomes', icon: ArrowLeftRight, tone: 'indigo' },
+  { screen: 'lump' as Screen, title: 'DCA vs Lump Sum', description: 'Compare two capital strategies', icon: WalletCards, tone: 'slate' },
+  { screen: 'markets' as Screen, title: 'Market Prices', description: 'See the latest market snapshot', icon: BarChart3, tone: 'graphite' },
 ];
 
 function Home({ go }: { go: (screen: Screen) => void }) {
+  const [signal, setSignal] = useState<MarketTemperature>();
+  useEffect(() => { api.temperatures().then((items) => Array.isArray(items) && setSignal(items[0])).catch(() => undefined); }, []);
   return (
     <div className="page-enter home-page">
       <header className="home-hero">
-        <div className="product-mark"><LineChart aria-hidden="true" /><span>DCA</span></div>
-        <h1>Explore long-term<br />investing outcomes</h1>
-        <p>Historical strategies, made clear.</p>
+        <div className="product-mark"><LineChart aria-hidden="true" /><span>HUNTER 3</span></div>
+        <h1>Invest with a longer view.</h1>
+        <p>Long-term investing intelligence.</p>
       </header>
+      <button className="temperature-hero" onClick={() => go('temperature')}>
+        <span className="hero-icon"><ThermometerSun aria-hidden="true" /></span><span className="hero-kicker">MARKET TEMPERATURE</span>
+        <strong>{signal ? `${signal.classification} · ${signal.trend}` : 'Conditions, made clear'}</strong>
+        <span className="hero-copy">{signal ? <><b>Opportunity {signal.opportunity_score}</b><b>Overheat {signal.overheat_score}</b></> : 'See long-term market conditions'}</span>
+        <span className="hero-link">View signals <ChevronRight aria-hidden="true" /></span>
+      </button>
       <section className="feature-grid" aria-label="Explore DCA tools">
         {FEATURES.map(({ screen, title, description, icon: Icon, tone }) => (
           <button className={`feature-card ${tone}`} key={screen} onClick={() => go(screen)}>
@@ -744,6 +751,7 @@ function Home({ go }: { go: (screen: Screen) => void }) {
           </button>
         ))}
       </section>
+      <button className="utility-card" onClick={() => go('alerts')}><span className="feature-icon"><Bell aria-hidden="true"/></span><span className="feature-copy"><strong>Alerts</strong><small>Get notified when signals change</small></span><ChevronRight aria-hidden="true"/></button>
       <p className="disclaimer">Historical outcomes are informational, not investment advice.</p>
     </div>
   );
