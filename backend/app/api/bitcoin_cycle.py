@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
@@ -14,6 +14,7 @@ from backend.app.services.dca_market_data import MarketDataError, MarketDataServ
 
 
 router = APIRouter(prefix="/api/bitcoin-cycle", tags=["bitcoin-cycle"])
+BTC_HISTORY_START = date(2014, 9, 17)
 
 
 @router.get("")
@@ -25,10 +26,9 @@ def get_bitcoin_cycle(
     asset = get_asset("BTC")
     market = MarketDataService(YFinanceProvider())
     end_date = date.today()
-    start_date = end_date - timedelta(days=365 * 6)
 
     try:
-        records = market.get_historical_prices(asset, start_date, end_date)
+        records = market.get_historical_prices(asset, BTC_HISTORY_START, end_date)
         result = calculate_bitcoin_cycle(records)
     except (MarketDataError, ValueError) as exc:
         raise HTTPException(

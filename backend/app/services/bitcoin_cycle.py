@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date
-from decimal import Decimal
 
 from backend.app.models.market import Divergence
 from backend.app.models.price import PriceRecord
@@ -37,12 +36,29 @@ class BitcoinCycleResult:
     momentum_1y_pct: float | None
 
 
-def _weekly_closes(records: list[PriceRecord]) -> list[float]:
-    weeks: dict[tuple[int, int], float] = {}
-    for record in records:
+def _completed_weekly_closes(records: list[PriceRecord]) -> list[float]:
+    """Return Sunday-ended BTC weekly closes without using an unfinished week.
+
+    The function is safe for historical backtests because it only uses records
+    available through the supplied as-of date. If the last observation is not a
+    Sunday, its ISO week is excluded entirely.
+    """
+    if not records:
+        return []
+
+    ordered = sorted(records, key=lambda item: item.date)
+    last_date = ordered[-1].date
+    current_week = (last_date.isocalendar().year, last_date.isocalendar().week)
+
+    weeks: dict[tuple[int, int], PriceRecord] = {}
+    for record in ordered:
         iso = record.date.isocalendar()
-        weeks[(iso.year, iso.week)] = float(record.price)
-    return list(weeks.values())
+        key = (iso.year, iso.week)
+        if key == current_week and last_date.weekday() != 6:
+            continue
+        weeks[key] = record
+
+    return [float(record.price) for record in weeks.values()]
 
 
 def _clamp(value: float, low: float = 0.0, high: float = 100.0) -> float:
@@ -97,12 +113,13 @@ def _overheat_score(
 
 
 def calculate_bitcoin_cycle(records: list[PriceRecord]) -> BitcoinCycleResult:
+    """Calculate a point-in-time BTC cycle snapshot using only supplied data."""
     if len(records) < 400:
         raise ValueError("At least 400 daily Bitcoin price records are required")
 
     records = sorted(records, key=lambda item: item.date)
     daily = [float(item.price) for item in records]
-    weekly = _weekly_closes(records)
+    weekly = _completed_weekly_closes(records)
 
     price = daily[-1]
     sma_200d = simple_moving_average(daily, 200)
