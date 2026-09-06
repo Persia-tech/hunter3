@@ -7,3 +7,4 @@ alembic
 python-dotenv
 python-telegram-bot
 matplotlib
+scipy
