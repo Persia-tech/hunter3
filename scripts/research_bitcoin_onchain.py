@@ -114,8 +114,9 @@ def _write_csv(rows, output: Path) -> None:  # type: ignore[no-untyped-def]
 
 
 def main() -> None:
-    print("Fetching free Bitcoin on-chain metrics from Coin Metrics Community API...")
-    print("Requested raw metrics: PriceUSD, CapMVRVCur, CapMVRVZ, CapRealUSD, NUPL")
+    print("Fetching free Bitcoin on-chain metrics from Coin Metrics...")
+    print("Primary source: Community API; automatic fallback: Coin Metrics public GitHub BTC archive.")
+    print("Requested/derived research metrics: PriceUSD, MVRV, MVRV Z-Score, Realized Cap, NUPL")
     provider = CoinMetricsCommunityProvider()
     records = provider.get_bitcoin_daily_metrics(start_date=START_DATE, end_date=date.today())
     if not records:
@@ -126,7 +127,7 @@ def main() -> None:
 
     latest = rows[-1]
     print()
-    print("LATEST RAW ON-CHAIN METRICS")
+    print("LATEST RAW / RECONSTRUCTED ON-CHAIN METRICS")
     print("-" * 72)
     print(f"Date:          {latest.date}")
     print(f"BTC price:     ${_fmt(latest.price_usd)}")
@@ -174,6 +175,7 @@ def main() -> None:
     for path in (csv_path, mvrv_path, mvrvz_path, nupl_path, realized_path, band_path):
         print(f"Saved: {path}")
     print("Research only: raw metrics remain separate; no composite weights were changed.")
+    print("If the GitHub archive fallback was used, MVRV is archived directly; Realized Cap and NUPL are algebraically reconstructed; MVRV Z uses an expanding no-look-ahead market-cap standard deviation.")
     print("Quintile summaries use full-sample cutoffs and are descriptive, not no-look-ahead signals.")
     print("Done.")
 
