@@ -113,6 +113,16 @@ def _write_csv(rows, output: Path) -> None:  # type: ignore[no-untyped-def]
             )
 
 
+def _latest_usable_row(rows):  # type: ignore[no-untyped-def]
+    for row in reversed(rows):
+        if any(
+            value is not None
+            for value in (row.price_usd, row.mvrv, row.mvrv_z, row.realized_cap_usd, row.nupl)
+        ):
+            return row
+    raise RuntimeError("No usable on-chain metric values were found in the downloaded history")
+
+
 def main() -> None:
     print("Fetching free Bitcoin on-chain metrics from Coin Metrics...")
     print("Primary source: Community API; automatic fallback: Coin Metrics public GitHub BTC archive.")
@@ -125,9 +135,10 @@ def main() -> None:
     print(f"Loaded {len(records):,} daily rows: {records[0].date} -> {records[-1].date}")
     rows = build_onchain_research_rows(records)
 
-    latest = rows[-1]
+    latest = _latest_usable_row(rows)
+    stale_days = (date.today() - latest.date).days
     print()
-    print("LATEST RAW / RECONSTRUCTED ON-CHAIN METRICS")
+    print("LATEST USABLE RAW / RECONSTRUCTED ON-CHAIN METRICS")
     print("-" * 72)
     print(f"Date:          {latest.date}")
     print(f"BTC price:     ${_fmt(latest.price_usd)}")
@@ -135,6 +146,8 @@ def main() -> None:
     print(f"MVRV Z-score:  {_fmt(latest.mvrv_z)}")
     print(f"Realized cap:  ${_fmt(latest.realized_cap_usd)}")
     print(f"NUPL:          {_fmt(latest.nupl)}")
+    if stale_days > 7:
+        print(f"WARNING: latest usable on-chain row is {stale_days} days old; do not use it as a current signal.")
 
     summaries_by_metric = {}
     for metric in ("mvrv", "mvrv_z", "nupl"):
@@ -176,6 +189,7 @@ def main() -> None:
         print(f"Saved: {path}")
     print("Research only: raw metrics remain separate; no composite weights were changed.")
     print("If the GitHub archive fallback was used, MVRV is archived directly; Realized Cap and NUPL are algebraically reconstructed; MVRV Z uses an expanding no-look-ahead market-cap standard deviation.")
+    print("MVRV and reconstructed NUPL are monotonic transforms of the same underlying valuation ratio, so do not give them independent composite weights without additional justification.")
     print("Quintile summaries use full-sample cutoffs and are descriptive, not no-look-ahead signals.")
     print("Done.")
 
