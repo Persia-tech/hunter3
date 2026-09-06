@@ -13,7 +13,11 @@ sys.path.insert(0, str(ROOT))
 
 from backend.app.models.asset import get_asset
 from backend.app.providers.dca_yfinance_provider import YFinanceProvider
-from backend.app.services.bitcoin_backtest import build_bitcoin_backtest, nearest_backtest_point
+from backend.app.services.bitcoin_backtest import (
+    build_bitcoin_backtest,
+    nearest_backtest_point,
+    summarize_score_bands,
+)
 from backend.app.services.dca_market_data import MarketDataService
 
 
@@ -63,6 +67,24 @@ def _write_csv(points, destination: Path) -> None:  # type: ignore[no-untyped-de
                     point.future_max_drawdown_365d_pct,
                 )
             )
+
+
+def _print_band_table(title: str, summaries) -> None:  # type: ignore[no-untyped-def]
+    print()
+    print(title)
+    print("-" * 116)
+    print(
+        f"{'Score':8} {'Days':>6} {'Med 180d':>10} {'Med 365d':>10} {'Med 730d':>10} "
+        f"{'365d >0':>9} {'365d >=50':>11} {'DD <=-30':>10} {'Med max+':>10} {'Med max-':>10}"
+    )
+    for row in summaries:
+        print(
+            f"{row.band:8} {row.count:>6} {_fmt(row.median_return_180d_pct):>10} "
+            f"{_fmt(row.median_return_365d_pct):>10} {_fmt(row.median_return_730d_pct):>10} "
+            f"{_fmt(row.positive_365d_rate_pct):>9} {_fmt(row.gain_50pct_365d_rate_pct):>11} "
+            f"{_fmt(row.drawdown_30pct_365d_rate_pct):>10} {_fmt(row.median_max_gain_365d_pct):>10} "
+            f"{_fmt(row.median_max_drawdown_365d_pct):>10}"
+        )
 
 
 def main() -> None:
@@ -133,6 +155,15 @@ def main() -> None:
             f"{best_heat.overheat_score:>3}/100 on {best_heat.as_of} ${best_heat.price:>9,.0f}"
         )
 
+    _print_band_table(
+        "OPPORTUNITY SCORE -> REALIZED FUTURE OUTCOMES",
+        summarize_score_bands(points, score_name="opportunity_score"),
+    )
+    _print_band_table(
+        "OVERHEAT SCORE -> REALIZED FUTURE OUTCOMES",
+        summarize_score_bands(points, score_name="overheat_score"),
+    )
+
     latest = points[-1]
     print()
     print("LATEST DAILY SCORE")
@@ -144,6 +175,7 @@ def main() -> None:
     print()
     print(f"Full daily results saved to: {destination}")
     print("Future-return columns are validation labels only; they are never used to calculate the scores.")
+    print("Band statistics use overlapping daily observations, so treat them as descriptive evidence, not independent trials.")
 
 
 if __name__ == "__main__":
