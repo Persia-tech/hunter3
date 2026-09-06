@@ -14,10 +14,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date
-from math import exp, isfinite, log, log10
+from math import exp, isfinite, log
 from statistics import median
-from typing import Iterable
 
+import numpy as np
 from scipy.optimize import minimize
 
 from backend.app.models.price import PriceRecord
@@ -60,10 +60,6 @@ def _days_since_anchor(day: date, anchor: date) -> float:
     return float(days)
 
 
-def _pinball_loss(residual: float, quantile: float) -> float:
-    return quantile * residual if residual >= 0 else (quantile - 1.0) * residual
-
-
 def _predict_log_price_from_values(
     *,
     t: float,
@@ -74,60 +70,45 @@ def _predict_log_price_from_values(
     d: float,
 ) -> float:
     ratio = max(t / t_scale, 1e-12)
-    decay_power = ratio**d
-    decay = exp(-c * decay_power)
-    return a * log(t) + b * decay
+    return a * log(t) + b * exp(-c * (ratio**d))
 
 
-def _objective(
-    raw_params: Iterable[float],
+def _objective_numpy(
+    raw_params: np.ndarray,
     *,
-    times: list[float],
-    log_prices: list[float],
+    times: np.ndarray,
+    log_times: np.ndarray,
+    log_prices: np.ndarray,
     t_scale: float,
     quantile: float,
 ) -> float:
-    values = list(raw_params)
-    if len(values) != 4:
-        return 1e30
-
-    a, b, log_c, log_d = values
-    if not all(isfinite(value) for value in values):
+    a, b, log_c, log_d = [float(value) for value in raw_params]
+    if not all(isfinite(value) for value in (a, b, log_c, log_d)):
         return 1e30
     if abs(a) > 20 or abs(b) > 100 or not -9 <= log_c <= 5 or not -9 <= log_d <= 5:
         return 1e30
 
     c = exp(log_c)
     d = exp(log_d)
-    total = 0.0
-
     try:
-        for t, observed in zip(times, log_prices):
-            predicted = _predict_log_price_from_values(
-                t=t,
-                t_scale=t_scale,
-                a=a,
-                b=b,
-                c=c,
-                d=d,
-            )
-            if not isfinite(predicted):
-                return 1e30
-            total += _pinball_loss(observed - predicted, quantile)
-    except (OverflowError, ValueError):
+        ratio = np.maximum(times / t_scale, 1e-12)
+        predicted = a * log_times + b * np.exp(-c * np.power(ratio, d))
+        residual = log_prices - predicted
+        losses = np.where(residual >= 0, quantile * residual, (quantile - 1.0) * residual)
+        total = float(np.sum(losses))
+    except (FloatingPointError, OverflowError, ValueError):
         return 1e30
 
-    return total
+    return total if isfinite(total) else 1e30
 
 
-def _linear_seed(times: list[float], log_prices: list[float]) -> tuple[float, float]:
-    xs = [log(t) for t in times]
-    x_mean = sum(xs) / len(xs)
-    y_mean = sum(log_prices) / len(log_prices)
-    denominator = sum((x - x_mean) ** 2 for x in xs)
-    slope = 0.0 if denominator == 0 else sum(
-        (x - x_mean) * (y - y_mean) for x, y in zip(xs, log_prices)
-    ) / denominator
+def _linear_seed(log_times: np.ndarray, log_prices: np.ndarray) -> tuple[float, float]:
+    x_mean = float(np.mean(log_times))
+    y_mean = float(np.mean(log_prices))
+    denominator = float(np.sum((log_times - x_mean) ** 2))
+    slope = 0.0 if denominator == 0 else float(
+        np.sum((log_times - x_mean) * (log_prices - y_mean)) / denominator
+    )
     intercept = y_mean - slope * x_mean
     return slope, intercept
 
@@ -137,19 +118,19 @@ def fit_bitcoin_quantile_model(
     *,
     quantiles: tuple[float, ...] = DEFAULT_QUANTILES,
     anchor: date = GENESIS_ANCHOR,
-    initializations: int = 6,
-    maxiter: int = 2500,
+    initializations: int = 4,
+    maxiter: int = 1800,
 ) -> BitcoinQuantileModel:
     """Fit stretched-exponential quantile curves by pinball-loss minimization.
 
-    Public research describes the Plan C v2 functional class as roughly:
+    Public research describes the Plan C v2 functional class as approximately:
 
-        Q_tau(log(P(t))) = a_tau * ln(t)
-                        + b_tau * exp(-c_tau * (t / T) ** d_tau)
+        Q_tau(log10(P(t))) = a_tau * ln(t)
+                           + b_tau * exp(-c_tau * (t / T) ** d_tau)
 
     with non-crossing quantile bands. Because the exact official v2 parameters
     and implementation are unpublished, this function independently fits that
-    public functional class to the supplied price history.
+    public functional class to the supplied Bitcoin history.
     """
     if len(records) < 365:
         raise ValueError("At least 365 daily price observations are required")
@@ -161,49 +142,55 @@ def fit_bitcoin_quantile_model(
         raise ValueError("quantiles must be unique and sorted ascending")
 
     ordered = sorted(records, key=lambda item: item.date)
-    times = [_days_since_anchor(item.date, anchor) for item in ordered]
-    prices = [float(item.price) for item in ordered]
-    if any(price <= 0 for price in prices):
+    times = np.array([_days_since_anchor(item.date, anchor) for item in ordered], dtype=float)
+    prices = np.array([float(item.price) for item in ordered], dtype=float)
+    if np.any(prices <= 0):
         raise ValueError("Bitcoin prices must be positive")
-    log_prices = [log10(price) for price in prices]
-    t_scale = float(median(times))
 
-    slope, intercept = _linear_seed(times, log_prices)
+    log_times = np.log(times)
+    log_prices = np.log10(prices)
+    t_scale = float(median(times.tolist()))
+    slope, intercept = _linear_seed(log_times, log_prices)
+
+    c_seeds = (0.03, 0.10, 0.30, 1.0)
+    d_seeds = (0.40, 0.75, 1.25, 2.0)
     fitted: list[QuantileParameters] = []
 
-    # Deterministic starting grid. This avoids random-search instability in tests
-    # and makes local research runs reproducible.
-    c_seeds = (0.03, 0.10, 0.30, 1.0, 3.0, 10.0)
-    d_seeds = (0.35, 0.60, 1.0, 1.5, 2.0, 3.0)
+    baseline_residuals = np.sort(log_prices - (slope * log_times + intercept))
 
     for quantile in quantiles:
-        residuals = sorted(y - (slope * log(t) + intercept) for t, y in zip(times, log_prices))
-        index = min(len(residuals) - 1, max(0, int(round(quantile * (len(residuals) - 1)))))
-        residual_shift = residuals[index]
+        residual_shift = float(np.quantile(baseline_residuals, quantile))
         b_seed = intercept + residual_shift
-
-        starts: list[tuple[float, float, float, float]] = []
-        for idx in range(initializations):
-            c0 = c_seeds[idx % len(c_seeds)]
-            d0 = d_seeds[(idx * 2) % len(d_seeds)]
-            starts.append((slope, b_seed, log(c0), log(d0)))
+        starts = [
+            np.array(
+                [
+                    slope,
+                    b_seed,
+                    log(c_seeds[idx % len(c_seeds)]),
+                    log(d_seeds[idx % len(d_seeds)]),
+                ],
+                dtype=float,
+            )
+            for idx in range(initializations)
+        ]
 
         best = None
         for start in starts:
-            objective = lambda values: _objective(  # noqa: E731
-                values,
-                times=times,
-                log_prices=log_prices,
-                t_scale=t_scale,
-                quantile=quantile,
-            )
             result = minimize(
-                objective,
+                _objective_numpy,
                 start,
+                args=(),
                 method="Nelder-Mead",
-                options={"maxiter": maxiter, "xatol": 1e-8, "fatol": 1e-8},
+                options={"maxiter": maxiter, "xatol": 1e-7, "fatol": 1e-7},
+                kwargs={
+                    "times": times,
+                    "log_times": log_times,
+                    "log_prices": log_prices,
+                    "t_scale": t_scale,
+                    "quantile": quantile,
+                },
             )
-            if best is None or result.fun < best.fun:
+            if best is None or float(result.fun) < float(best.fun):
                 best = result
 
         if best is None or not isfinite(float(best.fun)):
