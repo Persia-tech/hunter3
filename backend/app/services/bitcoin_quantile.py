@@ -177,8 +177,6 @@ def fit_bitcoin_quantile_model(
     d_seeds = (0.35, 0.60, 1.0, 1.5, 2.0, 3.0)
 
     for quantile in quantiles:
-        # Shift the starting intercept according to the empirical residual
-        # quantile so each optimizer begins near the correct distribution tail.
         residuals = sorted(y - (slope * log(t) + intercept) for t, y in zip(times, log_prices))
         index = min(len(residuals) - 1, max(0, int(round(quantile * (len(residuals) - 1)))))
         residual_shift = residuals[index]
@@ -192,17 +190,18 @@ def fit_bitcoin_quantile_model(
 
         best = None
         for start in starts:
+            objective = lambda values: _objective(  # noqa: E731
+                values,
+                times=times,
+                log_prices=log_prices,
+                t_scale=t_scale,
+                quantile=quantile,
+            )
             result = minimize(
-                _objective,
+                objective,
                 start,
                 method="Nelder-Mead",
                 options={"maxiter": maxiter, "xatol": 1e-8, "fatol": 1e-8},
-                kwargs={
-                    "times": times,
-                    "log_prices": log_prices,
-                    "t_scale": t_scale,
-                    "quantile": quantile,
-                },
             )
             if best is None or result.fun < best.fun:
                 best = result
@@ -240,8 +239,6 @@ def predict_quantile_bands(model: BitcoinQuantileModel, day: date) -> tuple[tupl
         )
         raw.append((params.quantile, 10**log_price))
 
-    # Rearrangement: keep quantile labels ordered and sort predicted prices.
-    # This guarantees a monotone set of bands for visualization/research.
     quantiles = [item[0] for item in raw]
     sorted_prices = sorted(item[1] for item in raw)
     return tuple(zip(quantiles, sorted_prices))
