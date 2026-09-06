@@ -49,10 +49,10 @@ def format_dca_result(result: DCAResult) -> str:
 
     frequency = result.frequency.value
     lines = [
-        "ðŸ“Š DCA Result",
+        "📊 DCA Result",
         "",
         f"Asset: {result.asset.symbol}",
-        f"Period: {result.start_date.isoformat()} â†’ {result.end_date.isoformat()}",
+        f"Period: {result.start_date.isoformat()} → {result.end_date.isoformat()}",
         f"Frequency: {frequency.title()}",
         f"Contribution: {format_currency(result.investment_per_period)}",
         f"Purchases: {result.number_of_purchases}",
@@ -91,7 +91,7 @@ def format_dca_result(result: DCAResult) -> str:
             (
                 "",
                 f"{result.asset.display_name} uses {result.asset.provider_ticker}, "
-                "a tradable ETF proxyâ€”not the physical-metal spot price.",
+                "a tradable ETF proxy—not the physical-metal spot price.",
             )
         )
     return "\n".join(lines)
@@ -106,9 +106,9 @@ def format_comparison_result(
         raise ValueError("results cannot be empty")
     first = results[0]
     lines = [
-        "âš–ï¸ Asset Comparison",
+        "⚖️ Asset Comparison",
         "",
-        f"Common period: {first.start_date.isoformat()} â†’ {first.end_date.isoformat()}",
+        f"Common period: {first.start_date.isoformat()} → {first.end_date.isoformat()}",
         f"Frequency: {first.frequency.value.title()}",
         f"Contribution: {format_currency(first.investment_per_period)} per asset",
         f"Total invested per asset: {format_currency(first.total_invested)}",
@@ -117,7 +117,7 @@ def format_comparison_result(
         lines.extend(
             (
                 "",
-                f"{'ðŸ† ' if rank == 1 else ''}{rank}. {result.asset.symbol}",
+                f"{'🏆 ' if rank == 1 else ''}{rank}. {result.asset.symbol}",
                 f"Accumulated: {format_asset_quantity(result.asset, result.total_units)}",
                 f"Final value: {format_currency(result.current_value)}",
                 f"Profit: {format_currency(result.profit_loss, show_sign=True)}",
@@ -126,7 +126,7 @@ def format_comparison_result(
         )
     unavailable = getattr(results, "unavailable_symbols", ())
     if unavailable:
-        lines.extend(("", "âš ï¸ Unavailable:", ", ".join(unavailable)))
+        lines.extend(("", "⚠️ Unavailable:", ", ".join(unavailable)))
     requested_end = first.requested_end_date or first.end_date
     if requested_end != first.end_date:
         lines.extend(
@@ -155,14 +155,14 @@ def format_dca_vs_lump_sum_result(result: DCAvsLumpSumResult) -> str:
         StrategyWinner.TIE: "Tie",
     }[result.winner]
     lines = [
-        "âš–ï¸ DCA vs Lump Sum",
+        "⚖️ DCA vs Lump Sum",
         "",
         dca.asset.symbol,
-        f"{dca.start_date.isoformat()} â†’ {dca.end_date.isoformat()}",
+        f"{dca.start_date.isoformat()} → {dca.end_date.isoformat()}",
         "",
-        f"ðŸ’° Total capital: {format_currency(dca.total_invested)}",
+        f"💰 Total capital: {format_currency(dca.total_invested)}",
         "",
-        "ðŸ“… DCA",
+        "📅 DCA",
         f"Total invested: {format_currency(dca.total_invested)}",
         f"Accumulated: {format_asset_quantity(dca.asset, dca.total_units)}",
         f"Contribution: {format_currency(dca.investment_per_period)} / "
@@ -172,7 +172,7 @@ def format_dca_vs_lump_sum_result(result: DCAvsLumpSumResult) -> str:
         f"Profit: {format_currency(dca.profit_loss, show_sign=True)}",
         f"Return: {format_percentage(dca.total_return_percentage)}",
         "",
-        "ðŸ’µ Lump Sum",
+        "💵 Lump Sum",
         f"Initial investment: {format_currency(lump.total_invested)}",
         f"Entry date: {lump.execution_date.isoformat()}",
         f"Bought initially: {format_asset_quantity(lump.asset, lump.units)}",
@@ -180,7 +180,7 @@ def format_dca_vs_lump_sum_result(result: DCAvsLumpSumResult) -> str:
         f"Profit: {format_currency(lump.profit_loss, show_sign=True)}",
         f"Return: {format_percentage(lump.total_return_percentage)}",
         "",
-        "ðŸ† Better historical result:",
+        "🏆 Better historical result:",
         (
             "Tie"
             if result.winner is StrategyWinner.TIE
@@ -206,7 +206,7 @@ def format_dca_vs_lump_sum_result(result: DCAvsLumpSumResult) -> str:
 def format_current_prices(result: CurrentPricesResult) -> str:
     """Format a compact UTC-stamped snapshot without altering Decimal values."""
 
-    lines = ["ðŸ“ˆ Current Prices", ""]
+    lines = ["📈 Current Prices", ""]
     lines.extend(
         f"{current.asset.symbol:<5} {format_currency(current.price)}"
         for current in result.prices

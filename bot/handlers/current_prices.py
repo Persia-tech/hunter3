@@ -16,8 +16,8 @@ from bot.utils.formatting import format_current_prices
 
 LOGGER = logging.getLogger(__name__)
 CURRENT_PRICES_SERVICE_KEY = "current_prices_service"
-REFRESH_PRICES = "ðŸ”„ Refresh Prices"
-MAIN_MENU = "ðŸ  Main Menu"
+REFRESH_PRICES = "🔄 Refresh Prices"
+MAIN_MENU = "🏠 Main Menu"
 
 
 def build_prices_keyboard() -> ReplyKeyboardMarkup:
