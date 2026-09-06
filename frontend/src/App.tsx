@@ -664,7 +664,9 @@ function Markets({ onHome }: { onHome: () => void }) {
     setRefreshing(true);
     api.prices().then(setData).catch((reason) => setError(reason.message)).finally(() => setRefreshing(false));
   }, []);
-  useEffect(load, [load]);
+  useEffect(() => {
+    void load();
+  }, [load]);
   if (error) return <ErrorState message="We couldn’t load the latest completed market snapshot." retry={load} home={onHome} />;
   return (
     <div className="page-enter markets-page">
@@ -707,7 +709,9 @@ function Alerts({ onHome }: { onHome: () => void }) {
   const [symbol, setSymbol] = useState('BTC-USD');
   const [value, setValue] = useState('60');
   const load = useCallback(() => api.alerts().then(setRules).catch((reason) => setError(reason.message)), []);
-  useEffect(load, [load]);
+  useEffect(() => {
+    void load();
+  }, [load]);
   const create = () => api.createAlert({scope_type:'symbol',scope_value:symbol,metric:'opportunity_score',operator:'above_or_equal',numeric_value:Number(value),notify_on_enter:true,notify_on_exit:false,cooldown_minutes:60,delivery_channel:'telegram'}).then(load).catch((reason) => setError(reason.message));
   if (error) return <ErrorState message={error} retry={() => {setError('');load();}} home={onHome}/>;
   if (!rules) return <LoadingState/>;
