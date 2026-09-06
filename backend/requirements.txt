@@ -6,3 +6,4 @@ psycopg[binary]
 alembic
 python-dotenv
 python-telegram-bot
+matplotlib
