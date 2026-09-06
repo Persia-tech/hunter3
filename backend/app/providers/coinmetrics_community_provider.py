@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
-import json
 from datetime import date, datetime
 from typing import Callable
 from urllib.parse import urlencode
-from urllib.request import urlopen
+
+import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 from backend.app.models.onchain import BitcoinOnChainRecord
 
@@ -48,11 +50,60 @@ class CoinMetricsCommunityProvider:
         self.timeout_seconds = timeout_seconds
         self._fetch_json_override = fetch_json
 
+        retry = Retry(
+            total=4,
+            connect=4,
+            read=4,
+            status=4,
+            backoff_factor=1.0,
+            status_forcelist=(429, 500, 502, 503, 504),
+            allowed_methods=frozenset({"GET"}),
+            raise_on_status=False,
+        )
+        adapter = HTTPAdapter(max_retries=retry)
+        self._session = requests.Session()
+        self._session.mount("https://", adapter)
+        self._session.headers.update(
+            {
+                "User-Agent": "hunter3-bitcoin-research/1.0",
+                "Accept": "application/json",
+                "Connection": "close",
+            }
+        )
+
     def _fetch_json(self, url: str) -> dict:
         if self._fetch_json_override is not None:
             return self._fetch_json_override(url)
-        with urlopen(url, timeout=self.timeout_seconds) as response:  # noqa: S310 - fixed trusted API base URL
-            return json.loads(response.read().decode("utf-8"))
+
+        try:
+            response = self._session.get(url, timeout=self.timeout_seconds)
+        except requests.RequestException as exc:
+            raise RuntimeError(
+                "Could not connect to Coin Metrics Community API. "
+                "This can be caused by a transient TLS/network reset, VPN/firewall filtering, "
+                "or the remote service closing the connection. Try again once; if it persists, "
+                "test the community-api.coinmetrics.io host from your browser/curl."
+            ) from exc
+
+        if response.status_code in {401, 403}:
+            raise RuntimeError(
+                f"Coin Metrics returned HTTP {response.status_code}. "
+                "The Community endpoint does not require an API key, but one or more requested "
+                "metrics may not be available to anonymous Community access."
+            )
+        if not response.ok:
+            body = response.text[:500].replace("\n", " ")
+            raise RuntimeError(
+                f"Coin Metrics returned HTTP {response.status_code}: {body}"
+            )
+
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            raise RuntimeError("Coin Metrics returned invalid JSON") from exc
+        if not isinstance(payload, dict):
+            raise RuntimeError("Coin Metrics returned an unexpected response shape")
+        return payload
 
     def get_bitcoin_daily_metrics(
         self,
