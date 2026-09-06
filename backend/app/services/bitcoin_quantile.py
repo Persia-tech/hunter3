@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date
+from functools import partial
 from math import exp, isfinite, log
 from statistics import median
 
@@ -155,7 +156,6 @@ def fit_bitcoin_quantile_model(
     c_seeds = (0.03, 0.10, 0.30, 1.0)
     d_seeds = (0.40, 0.75, 1.25, 2.0)
     fitted: list[QuantileParameters] = []
-
     baseline_residuals = np.sort(log_prices - (slope * log_times + intercept))
 
     for quantile in quantiles:
@@ -174,21 +174,22 @@ def fit_bitcoin_quantile_model(
             for idx in range(initializations)
         ]
 
+        objective = partial(
+            _objective_numpy,
+            times=times,
+            log_times=log_times,
+            log_prices=log_prices,
+            t_scale=t_scale,
+            quantile=quantile,
+        )
+
         best = None
         for start in starts:
             result = minimize(
-                _objective_numpy,
+                objective,
                 start,
-                args=(),
                 method="Nelder-Mead",
                 options={"maxiter": maxiter, "xatol": 1e-7, "fatol": 1e-7},
-                kwargs={
-                    "times": times,
-                    "log_times": log_times,
-                    "log_prices": log_prices,
-                    "t_scale": t_scale,
-                    "quantile": quantile,
-                },
             )
             if best is None or float(result.fun) < float(best.fun):
                 best = result
