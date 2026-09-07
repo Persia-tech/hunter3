@@ -35,6 +35,7 @@ import {
 
 import { api } from './api';
 import { getAssetIcon } from './assetIcons';
+import { BitcoinOverview } from './BitcoinOverview';
 import { money, percent, quantity } from './format';
 import { tg } from './telegram';
 import type { AlertRule, Asset, DcaResult, LumpResult, MarketTemperature, Screen } from './types';
@@ -736,6 +737,11 @@ function Home({ go }: { go: (screen: Screen) => void }) {
         <h1>Invest with a longer view.</h1>
         <p>Long-term investing intelligence.</p>
       </header>
+      <button className="bitcoin-home-card" onClick={() => go('bitcoin')}>
+        <span className="btc-mark">₿</span>
+        <span className="bitcoin-home-card-copy"><small>BITCOIN RESEARCH</small><strong>BTC Current State</strong><span>Bottom stages · Top stages · Raw indicators</span></span>
+        <ChevronRight aria-hidden="true" />
+      </button>
       <button className="temperature-hero" onClick={() => go('temperature')}>
         <span className="hero-icon"><ThermometerSun aria-hidden="true" /></span><span className="hero-kicker">MARKET TEMPERATURE</span>
         <strong>{signal ? `${signal.classification} · ${signal.trend}` : 'Conditions, made clear'}</strong>
@@ -759,6 +765,7 @@ function Home({ go }: { go: (screen: Screen) => void }) {
 
 const NAV_ITEMS = [
   { screen: 'home' as Screen, label: 'Home', icon: HomeIcon },
+  { screen: 'bitcoin' as Screen, label: 'Bitcoin', icon: LineChart },
   { screen: 'dca' as Screen, label: 'Calculate', icon: TrendingUp },
   { screen: 'compare' as Screen, label: 'Compare', icon: ArrowLeftRight },
   { screen: 'markets' as Screen, label: 'Markets', icon: BarChart3 },
@@ -821,6 +828,7 @@ export function App() {
   if (loading) content = <LoadingState />;
   else if (error) content = <ErrorState message={error} retry={() => { setError(''); setResult(undefined); }} home={() => go('home')} />;
   else if (screen === 'home') content = <Home go={go} />;
+  else if (screen === 'bitcoin') content = <BitcoinOverview onHome={() => go('home')} />;
   else if (screen === 'markets') content = <Markets onHome={() => go('home')} />;
   else if (screen === 'temperature') content = <Temperature onHome={() => go('home')} />;
   else if (screen === 'alerts') content = <Alerts onHome={() => go('home')} />;
