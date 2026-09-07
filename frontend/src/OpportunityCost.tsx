@@ -4,6 +4,7 @@ import { Check, ChevronDown, Edit3, Minus, Package, Plus, Search, Share2, Sparkl
 import { api } from './api';
 import { getAssetIcon } from './assetIcons';
 import { money, percent } from './format';
+import { getProductImage } from './productImages';
 import type { Asset, CustomPurchase, OpportunityRanking, OpportunityResult, Product } from './types';
 
 const MAX_ASSETS = 5;
@@ -29,6 +30,12 @@ function validateCustom(draft: CustomDraft): string {
 function AssetMark({ symbol }: { symbol: string }) {
   const icon = getAssetIcon(symbol);
   return <span className={`opportunity-asset-mark ${icon.kind ?? ''}`} aria-hidden="true">{icon.mark}</span>;
+}
+
+function ProductThumbnail({ product }: { product: Product }) {
+  const [failed, setFailed] = useState(false);
+  const src = getProductImage(product.id);
+  return <span className="product-thumbnail">{src && !failed ? <img src={src} alt={`${product.model} thumbnail`} width="40" height="40" loading={product.display_order < 4 ? 'eager' : 'lazy'} decoding="async" onError={() => setFailed(true)}/> : <Package aria-hidden="true"/>}</span>;
 }
 
 export function OpportunityCost({ assets }: { assets: Asset[] }) {
@@ -145,14 +152,13 @@ export function OpportunityCost({ assets }: { assets: Asset[] }) {
     {error && <p className="opportunity-error" role="alert">{error}</p>}
 
     <section className="opportunity-section opportunity-purchases-section">
-      <div className="section-heading"><div><h2>Purchases</h2><p>Choose from the catalog or add your own.</p></div>{requestItems.length > 0 && <button className="text-button" onClick={startOver}><Trash2/> Start over</button>}</div>
-      <button className="add-custom-button" onClick={() => openCustom()}><Plus/> Add custom purchase</button>
+      <div className="section-heading purchases-heading"><div><h2>Purchases</h2><p>Choose from the catalog or add your own.</p></div><div className="purchase-heading-actions">{requestItems.length > 0 && <button className="text-button" onClick={startOver}><Trash2/> Start over</button>}<button className="add-custom-button" onClick={() => openCustom()} aria-label="Add custom purchase"><Plus/> <span>Custom</span></button></div></div>
       <div className="chip-row" aria-label="Product categories"><button className={category === 'All' ? 'active' : ''} onClick={() => { setCategory('All'); setCatalogExpanded(false); }}>All</button>{categories.map((item) => <button className={category === item ? 'active' : ''} onClick={() => setCategory(item)} key={item}>{item}</button>)}</div>
-      <div className="product-grid">{visibleProducts.map((product) => <button aria-pressed={Boolean(selected[product.id])} className={`product-card ${selected[product.id] ? 'selected' : ''}`} onClick={() => { changeCatalogQuantity(product.id, selected[product.id] ? -selected[product.id] : 1); resetResults(); }} key={product.id}><span className="product-placeholder"><Package/></span><span><strong>{product.model}</strong><small>{product.release_year} · {dollars(product.launch_price_usd)}</small></span><i>{selected[product.id] ? <Check/> : <Plus/>}</i></button>)}</div>
+      <div className="product-grid">{visibleProducts.map((product) => <button aria-pressed={Boolean(selected[product.id])} className={`product-card ${selected[product.id] ? 'selected' : ''}`} onClick={() => { changeCatalogQuantity(product.id, selected[product.id] ? -selected[product.id] : 1); resetResults(); }} key={product.id}><ProductThumbnail product={product}/><span><strong>{product.model}</strong><small>{product.release_year} · {dollars(product.launch_price_usd)}</small></span><i>{selected[product.id] ? <Check/> : <Plus/>}</i></button>)}</div>
       {category === 'All' && categoryProducts.length > 8 && <button className="disclosure-button" aria-expanded={catalogExpanded} onClick={() => setCatalogExpanded((value) => !value)}>{catalogExpanded ? 'Show fewer products' : `Browse all ${categoryProducts.length} products`}<ChevronDown/></button>}
     </section>
 
-    {requestItems.length === 0 ? <section className="opportunity-empty"><Sparkles/><h2>Start with something you bought</h2><p>Your exact spending timeline tells the story.</p></section> : <>
+    {requestItems.length === 0 ? <section className="opportunity-empty"><Sparkles/><p><strong>Select purchases</strong> to compare them with BTC, stocks, or gold.</p></section> : <>
       <section className="opportunity-section selected-purchases"><div className="section-heading"><div><h2>My purchases</h2><p>{totalQuantity} purchases selected</p></div></div>
         {(showPurchases ? purchaseRows : purchaseRows.slice(0, PREVIEW_COUNT)).map((row) => row.type === 'catalog' ? <PurchaseRow key={row.product.id} name={row.product.model} detail={`${row.product.release_date.slice(0, 4)} · ${dollars(row.product.launch_price_usd)}`} quantity={selected[row.product.id]} onMinus={() => { changeCatalogQuantity(row.product.id, -1); resetResults(); }} onPlus={() => { changeCatalogQuantity(row.product.id, 1); resetResults(); }}/> : <PurchaseRow key={row.custom.id} name={row.custom.name} detail={`${row.custom.purchase_date} · ${dollars(row.custom.price_usd)}`} quantity={row.custom.quantity} custom onMinus={() => { changeCustomQuantity(row.custom.id, -1); resetResults(); }} onPlus={() => { changeCustomQuantity(row.custom.id, 1); resetResults(); }} onEdit={() => openCustom(row.custom)} onDelete={() => { setCustoms((current) => current.filter((item) => item.id !== row.custom.id)); resetResults(); }}/>) }
         {purchaseRows.length > PREVIEW_COUNT && <button className="disclosure-button" aria-expanded={showPurchases} onClick={() => setShowPurchases((value) => !value)}>{showPurchases ? 'Show fewer purchases' : `Show all ${purchaseRows.length} purchases`}<ChevronDown/></button>}
