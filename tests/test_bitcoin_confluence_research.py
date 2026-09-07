@@ -126,6 +126,9 @@ def test_era_stability_partitions_validation_without_changing_thresholds() -> No
         _point(date(2019, 6, 1), opp=65, quantile=8, mvrv_pct=15, future=80, drawdown=-10),
         _point(date(2020, 6, 1), opp=20, quantile=50, mvrv_pct=50, future=5, drawdown=-5),
         _point(date(2022, 6, 1), opp=70, quantile=5, mvrv_pct=10, future=-10, drawdown=-35),
+        # Explicit exit so the 2023 signal is a genuine global re-entry rather than
+        # an artifact of slicing the observations at the era boundary.
+        _point(date(2022, 6, 2), opp=20, quantile=50, mvrv_pct=50, future=5, drawdown=-5),
         _point(date(2023, 6, 1), opp=75, quantile=4, mvrv_pct=8, future=120, drawdown=-5),
     ]
     rows = evaluate_era_stability(points)
