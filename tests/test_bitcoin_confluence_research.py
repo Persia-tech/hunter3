@@ -7,6 +7,7 @@ from backend.app.services.bitcoin_confluence_research import (
     ConfluencePoint,
     ConfluenceSpec,
     condition_matches,
+    evaluate_era_stability,
     evaluate_threshold_sensitivity,
     independent_confluence_episodes,
     summarize_spec,
@@ -86,8 +87,6 @@ def test_threshold_sensitivity_uses_predeclared_grid_without_fitting() -> None:
     points = [
         _point(start, opp=55, quantile=12, mvrv_pct=25, future=50, drawdown=-10),
         _point(start + timedelta(days=1), opp=65, quantile=8, mvrv_pct=15, future=100, drawdown=-5),
-        # Deliberately leave the loose all-three condition before the later
-        # signal so episode counting tests a true threshold re-entry.
         _point(start + timedelta(days=50), opp=20, quantile=50, mvrv_pct=50, future=10, drawdown=-5),
         _point(start + timedelta(days=100), opp=75, quantile=4, mvrv_pct=8, future=-20, drawdown=-40),
     ]
@@ -120,3 +119,32 @@ def test_threshold_sensitivity_uses_predeclared_grid_without_fitting() -> None:
     assert strict.daily_count == 1
     assert strict.episode_count == 1
     assert strict.episode_median_return_365d_pct == -20.0
+
+
+def test_era_stability_partitions_validation_without_changing_thresholds() -> None:
+    points = [
+        _point(date(2019, 6, 1), opp=65, quantile=8, mvrv_pct=15, future=80, drawdown=-10),
+        _point(date(2020, 6, 1), opp=20, quantile=50, mvrv_pct=50, future=5, drawdown=-5),
+        _point(date(2022, 6, 1), opp=70, quantile=5, mvrv_pct=10, future=-10, drawdown=-35),
+        _point(date(2023, 6, 1), opp=75, quantile=4, mvrv_pct=8, future=120, drawdown=-5),
+    ]
+    rows = evaluate_era_stability(points)
+
+    all_three = [row for row in rows if row.condition == "All three baseline"]
+    assert len(all_three) == 3
+
+    first, second, third = all_three
+    assert first.era == "2016-2019"
+    assert first.daily_count == 1
+    assert first.episode_count == 1
+    assert first.episode_median_return_365d_pct == 80.0
+
+    assert second.era == "2020-2022"
+    assert second.daily_count == 1
+    assert second.episode_count == 1
+    assert second.episode_drawdown_30pct_rate_pct == 100.0
+
+    assert third.era == "2023-2026"
+    assert third.daily_count == 1
+    assert third.episode_count == 1
+    assert third.episode_median_return_365d_pct == 120.0
