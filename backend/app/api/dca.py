@@ -35,6 +35,7 @@ from backend.app.services.lump_sum import (
     DCAvsLumpSumError,
     DCAvsLumpSumService,
 )
+from backend.app.services.opportunity_cost import OpportunityCostService
 
 
 class CalculationRequest(BaseModel):
@@ -469,6 +470,8 @@ def create_app(
         alerts_router
     )
     app.include_router(market_temperature_router)
+    from backend.app.api.opportunity_cost import create_router as create_opportunity_router
+    app.include_router(create_opportunity_router(OpportunityCostService(market)))
 
     return app
 
