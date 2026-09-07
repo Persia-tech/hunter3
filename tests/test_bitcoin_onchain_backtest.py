@@ -5,6 +5,7 @@ from datetime import date, timedelta
 from backend.app.services.bitcoin_onchain_backtest import (
     build_onchain_point_in_time_backtest,
     default_threshold_summaries,
+    expanding_percentile,
     independent_episodes,
 )
 from backend.app.services.bitcoin_onchain_research import OnChainResearchRow
@@ -22,6 +23,11 @@ def _row(day: date, *, price: float, mvrv: float, mvrv_z: float, future: float |
         future_return_365d_pct=future,
         future_max_drawdown_365d_pct=-5.0,
     )
+
+
+def test_expanding_percentile_midrank() -> None:
+    history = [1.0, 1.5, 1.5, 2.0]
+    assert expanding_percentile(1.5, history) == 50.0
 
 
 def test_expanding_percentile_uses_only_history_through_today() -> None:
