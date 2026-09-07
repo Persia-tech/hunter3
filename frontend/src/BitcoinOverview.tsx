@@ -112,7 +112,14 @@ export function BitcoinOverview({ onHome }: { onHome: () => void }) {
           : data.drawdown_percent <= -30
             ? 'Discounted'
             : 'Neutral';
-    return { stage1Bottom, stage2Bottom, stage3Bottom, stage1Top, below200d, cheapTone };
+    const interpretation = stage2Bottom
+      ? 'Statistical value and on-chain confirmation are aligned. Technical capitulation confirmation remains separate.'
+      : stage1Bottom
+        ? 'Valuation is statistically low, but on-chain and capitulation confirmation are not active yet.'
+        : stage1Top
+          ? 'On-chain valuation is elevated. Watch for persistent weakness before treating this as a de-risking confirmation.'
+          : 'No extreme accumulation or de-risking confirmation is active. Signals remain mixed or neutral.';
+    return { stage1Bottom, stage2Bottom, stage3Bottom, stage1Top, below200d, cheapTone, interpretation };
   }, [data, research]);
 
   if (error) {
@@ -162,7 +169,7 @@ export function BitcoinOverview({ onHome }: { onHome: () => void }) {
           <div>
             <span>MARKET STATE</span>
             <strong>{state.cheapTone}</strong>
-            <small>{data.classification} · {data.trend}</small>
+            <small>{state.interpretation}</small>
           </div>
           <Sparkles aria-hidden="true" />
         </div>
@@ -185,16 +192,22 @@ export function BitcoinOverview({ onHome }: { onHome: () => void }) {
             title="Statistical value"
             value={quantile ? `Quantile ${formatPercentile(quantile.percentile)}` : 'Quantile unavailable'}
             status={quantile ? (state.stage1Bottom ? 'active' : 'inactive') : 'pending'}
-            note="Active when the research quantile percentile is 10 or lower."
+            note={state.stage1Bottom ? 'Historically cheap valuation. Active at percentile 10 or lower.' : 'Not in the historically cheap quantile zone.'}
           />
           <StageRow
             stage="2"
             title="On-chain confirmation"
-            value={mvrv ? `MVRV pct ${formatPercentile(mvrv.percentile)}` : 'MVRV unavailable'}
+            value={mvrv ? `MVRV ${mvrv.value.toFixed(2)} · pct ${mvrv.percentile.toFixed(1)}` : 'MVRV unavailable'}
             status={mvrv && quantile ? (state.stage2Bottom ? 'active' : 'inactive') : 'pending'}
-            note="Active when Quantile ≤10 and MVRV historical percentile ≤20."
+            note={state.stage2Bottom ? 'Statistical value and MVRV are both in their low historical zones.' : 'Requires Quantile ≤10 and MVRV historical percentile ≤20.'}
           />
-          <StageRow stage="3" title="Capitulation confirmation" value={`Opportunity ${Math.round(data.opportunity_score)} / 100`} status={state.stage3Bottom ? 'active' : 'inactive'} note="Active when Opportunity reaches 60 or higher." />
+          <StageRow
+            stage="3"
+            title="Capitulation confirmation"
+            value={`Opportunity ${Math.round(data.opportunity_score)} / 100`}
+            status={state.stage3Bottom ? 'active' : 'inactive'}
+            note={state.stage3Bottom ? 'Technical capitulation confirmation is active.' : 'Activates when Opportunity reaches 60 or higher.'}
+          />
         </div>
       </section>
 
@@ -207,12 +220,18 @@ export function BitcoinOverview({ onHome }: { onHome: () => void }) {
           <StageRow
             stage="1"
             title="On-chain overvaluation"
-            value={mvrv ? `MVRV pct ${formatPercentile(mvrv.percentile)}` : 'MVRV unavailable'}
+            value={mvrv ? `MVRV ${mvrv.value.toFixed(2)} · pct ${mvrv.percentile.toFixed(1)}` : 'MVRV unavailable'}
             status={mvrv ? (state.stage1Top ? 'active' : 'inactive') : 'pending'}
-            note="Primary warning activates when MVRV historical percentile reaches 90 or higher."
+            note={state.stage1Top ? 'Primary overvaluation warning is active.' : 'Primary warning activates at MVRV historical percentile 90 or higher.'}
           />
-          <StageRow stage="2" title="Persistent weakness" value="Any-2 sustained 14d" status="pending" note="Requires rolling live weakness history; this remains intentionally separate." />
-          <StageRow stage="3" title="Structural damage" value={data.sma_200d == null ? '200D MA unavailable' : `${formatMoney(data.sma_200d)} · 200D MA`} status={state.below200d ? 'active' : 'inactive'} note={state.below200d ? 'Price is below the 200-day moving average.' : 'Price remains above the 200-day moving average.'} />
+          <StageRow stage="2" title="Persistent weakness" value="Any-2 sustained 14d" status="pending" note="Requires rolling live weakness history; intentionally not inferred from one snapshot." />
+          <StageRow
+            stage="3"
+            title="Structural damage"
+            value={data.sma_200d == null ? '200D MA unavailable' : `${formatMoney(data.sma_200d)} · 200D MA`}
+            status={state.below200d ? 'active' : 'inactive'}
+            note={state.below200d ? 'Price is below the 200-day moving average.' : 'Price remains above the 200-day moving average.'}
+          />
         </div>
       </section>
 
