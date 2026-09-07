@@ -1,0 +1,342 @@
+"""Research-only confluence analysis for independent Bitcoin signal families.
+
+This module intentionally does not create a composite score or fit weights. It
+joins already point-in-time/no-look-ahead research outputs by date and evaluates
+predeclared threshold combinations, nearby threshold sensitivity, and fixed-era
+stability.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import date
+from statistics import median
+
+
+@dataclass(frozen=True, slots=True)
+class ConfluencePoint:
+    date: date
+    price: float
+    opportunity_score: float
+    quantile_percentile: float
+    mvrv_percentile: float
+    future_return_365d_pct: float | None
+    future_max_drawdown_365d_pct: float | None
+
+
+@dataclass(frozen=True, slots=True)
+class ConfluenceSummary:
+    label: str
+    count: int
+    valid_365d: int
+    median_return_365d_pct: float | None
+    positive_365d_rate_pct: float | None
+    gain_50pct_365d_rate_pct: float | None
+    drawdown_30pct_rate_pct: float | None
+
+
+@dataclass(frozen=True, slots=True)
+class ConfluenceSpec:
+    label: str
+    require_opportunity: bool = False
+    require_quantile: bool = False
+    require_mvrv: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class ThresholdSensitivityRow:
+    opportunity_threshold: float
+    quantile_threshold: float
+    mvrv_percentile_threshold: float
+    daily_count: int
+    valid_365d: int
+    median_return_365d_pct: float | None
+    positive_365d_rate_pct: float | None
+    gain_50pct_365d_rate_pct: float | None
+    drawdown_30pct_rate_pct: float | None
+    episode_count: int
+    episode_valid_365d: int
+    episode_median_return_365d_pct: float | None
+    episode_drawdown_30pct_rate_pct: float | None
+
+
+@dataclass(frozen=True, slots=True)
+class EraStabilityRow:
+    era: str
+    start_date: date
+    end_date: date
+    condition: str
+    daily_count: int
+    valid_365d: int
+    median_return_365d_pct: float | None
+    positive_365d_rate_pct: float | None
+    drawdown_30pct_rate_pct: float | None
+    episode_count: int
+    episode_valid_365d: int
+    episode_median_return_365d_pct: float | None
+    episode_drawdown_30pct_rate_pct: float | None
+
+
+DEFAULT_SPECS = (
+    ConfluenceSpec("Opportunity >= 60", require_opportunity=True),
+    ConfluenceSpec("Quantile <= 10", require_quantile=True),
+    ConfluenceSpec("MVRV pct <= 20", require_mvrv=True),
+    ConfluenceSpec("Quantile <= 10 + MVRV pct <= 20", require_quantile=True, require_mvrv=True),
+    ConfluenceSpec("Opportunity >= 60 + MVRV pct <= 20", require_opportunity=True, require_mvrv=True),
+    ConfluenceSpec("Opportunity >= 60 + Quantile <= 10", require_opportunity=True, require_quantile=True),
+    ConfluenceSpec(
+        "Opportunity >= 60 + Quantile <= 10 + MVRV pct <= 20",
+        require_opportunity=True,
+        require_quantile=True,
+        require_mvrv=True,
+    ),
+)
+
+ALL_THREE_SPEC = ConfluenceSpec(
+    "All three",
+    require_opportunity=True,
+    require_quantile=True,
+    require_mvrv=True,
+)
+
+DEFAULT_ERAS = (
+    ("2016-2019", date(2016, 9, 15), date(2019, 12, 31)),
+    ("2020-2022", date(2020, 1, 1), date(2022, 12, 31)),
+    ("2023-2026", date(2023, 1, 1), date(2026, 12, 31)),
+)
+
+ERA_SPECS = (
+    ConfluenceSpec("Opportunity >= 60", require_opportunity=True),
+    ConfluenceSpec("Quantile <= 10", require_quantile=True),
+    ConfluenceSpec("MVRV pct <= 20", require_mvrv=True),
+    ConfluenceSpec(
+        "All three baseline",
+        require_opportunity=True,
+        require_quantile=True,
+        require_mvrv=True,
+    ),
+)
+
+
+def condition_matches(
+    point: ConfluencePoint,
+    spec: ConfluenceSpec,
+    *,
+    opportunity_threshold: float = 60.0,
+    quantile_threshold: float = 10.0,
+    mvrv_percentile_threshold: float = 20.0,
+) -> bool:
+    if spec.require_opportunity and point.opportunity_score < opportunity_threshold:
+        return False
+    if spec.require_quantile and point.quantile_percentile > quantile_threshold:
+        return False
+    if spec.require_mvrv and point.mvrv_percentile > mvrv_percentile_threshold:
+        return False
+    return True
+
+
+def _rate(values: list[float], predicate) -> float | None:  # type: ignore[no-untyped-def]
+    if not values:
+        return None
+    return 100.0 * sum(1 for value in values if predicate(value)) / len(values)
+
+
+def summarize_spec(
+    points: list[ConfluencePoint],
+    spec: ConfluenceSpec,
+    *,
+    opportunity_threshold: float = 60.0,
+    quantile_threshold: float = 10.0,
+    mvrv_percentile_threshold: float = 20.0,
+) -> ConfluenceSummary:
+    selected = [
+        point
+        for point in points
+        if condition_matches(
+            point,
+            spec,
+            opportunity_threshold=opportunity_threshold,
+            quantile_threshold=quantile_threshold,
+            mvrv_percentile_threshold=mvrv_percentile_threshold,
+        )
+    ]
+    returns = [p.future_return_365d_pct for p in selected if p.future_return_365d_pct is not None]
+    drawdowns = [
+        p.future_max_drawdown_365d_pct
+        for p in selected
+        if p.future_max_drawdown_365d_pct is not None
+    ]
+    return ConfluenceSummary(
+        label=spec.label,
+        count=len(selected),
+        valid_365d=len(returns),
+        median_return_365d_pct=median(returns) if returns else None,
+        positive_365d_rate_pct=_rate(returns, lambda value: value > 0),
+        gain_50pct_365d_rate_pct=_rate(returns, lambda value: value >= 50),
+        drawdown_30pct_rate_pct=_rate(drawdowns, lambda value: value <= -30),
+    )
+
+
+def summarize_default_confluence(points: list[ConfluencePoint]) -> list[ConfluenceSummary]:
+    return [summarize_spec(points, spec) for spec in DEFAULT_SPECS]
+
+
+def independent_confluence_episodes(
+    points: list[ConfluencePoint],
+    spec: ConfluenceSpec,
+    *,
+    cooldown_days: int = 90,
+    opportunity_threshold: float = 60.0,
+    quantile_threshold: float = 10.0,
+    mvrv_percentile_threshold: float = 20.0,
+) -> list[ConfluencePoint]:
+    """Return first entries into a confluence condition with cooldown suppression."""
+    if cooldown_days < 0:
+        raise ValueError("cooldown_days must be non-negative")
+
+    episodes: list[ConfluencePoint] = []
+    was_inside = False
+    last_selected: date | None = None
+    for point in sorted(points, key=lambda item: item.date):
+        inside = condition_matches(
+            point,
+            spec,
+            opportunity_threshold=opportunity_threshold,
+            quantile_threshold=quantile_threshold,
+            mvrv_percentile_threshold=mvrv_percentile_threshold,
+        )
+        entered = inside and not was_inside
+        if entered:
+            far_enough = last_selected is None or (point.date - last_selected).days >= cooldown_days
+            if far_enough:
+                episodes.append(point)
+                last_selected = point.date
+        was_inside = inside
+    return episodes
+
+
+def evaluate_threshold_sensitivity(
+    points: list[ConfluencePoint],
+    *,
+    opportunity_thresholds: tuple[float, ...] = (50.0, 60.0, 70.0),
+    quantile_thresholds: tuple[float, ...] = (5.0, 10.0, 15.0, 20.0),
+    mvrv_percentile_thresholds: tuple[float, ...] = (10.0, 20.0, 30.0),
+    cooldown_days: int = 90,
+) -> list[ThresholdSensitivityRow]:
+    """Evaluate a predeclared nearby threshold grid for all-three confluence.
+
+    The grid is sensitivity analysis, not optimization. No threshold is selected
+    or fitted from future returns. Independent episodes remain the primary view.
+    """
+    rows: list[ThresholdSensitivityRow] = []
+    for opp_threshold in opportunity_thresholds:
+        for quantile_threshold in quantile_thresholds:
+            for mvrv_threshold in mvrv_percentile_thresholds:
+                summary = summarize_spec(
+                    points,
+                    ALL_THREE_SPEC,
+                    opportunity_threshold=opp_threshold,
+                    quantile_threshold=quantile_threshold,
+                    mvrv_percentile_threshold=mvrv_threshold,
+                )
+                episodes = independent_confluence_episodes(
+                    points,
+                    ALL_THREE_SPEC,
+                    cooldown_days=cooldown_days,
+                    opportunity_threshold=opp_threshold,
+                    quantile_threshold=quantile_threshold,
+                    mvrv_percentile_threshold=mvrv_threshold,
+                )
+                episode_returns = [
+                    p.future_return_365d_pct
+                    for p in episodes
+                    if p.future_return_365d_pct is not None
+                ]
+                episode_drawdowns = [
+                    p.future_max_drawdown_365d_pct
+                    for p in episodes
+                    if p.future_max_drawdown_365d_pct is not None
+                ]
+                rows.append(
+                    ThresholdSensitivityRow(
+                        opportunity_threshold=opp_threshold,
+                        quantile_threshold=quantile_threshold,
+                        mvrv_percentile_threshold=mvrv_threshold,
+                        daily_count=summary.count,
+                        valid_365d=summary.valid_365d,
+                        median_return_365d_pct=summary.median_return_365d_pct,
+                        positive_365d_rate_pct=summary.positive_365d_rate_pct,
+                        gain_50pct_365d_rate_pct=summary.gain_50pct_365d_rate_pct,
+                        drawdown_30pct_rate_pct=summary.drawdown_30pct_rate_pct,
+                        episode_count=len(episodes),
+                        episode_valid_365d=len(episode_returns),
+                        episode_median_return_365d_pct=(median(episode_returns) if episode_returns else None),
+                        episode_drawdown_30pct_rate_pct=_rate(episode_drawdowns, lambda value: value <= -30),
+                    )
+                )
+    return rows
+
+
+def evaluate_era_stability(
+    points: list[ConfluencePoint],
+    *,
+    eras: tuple[tuple[str, date, date], ...] = DEFAULT_ERAS,
+    specs: tuple[ConfluenceSpec, ...] = ERA_SPECS,
+    cooldown_days: int = 90,
+) -> list[EraStabilityRow]:
+    """Evaluate fixed baseline rules across predeclared market eras.
+
+    Daily observations are partitioned by era for descriptive statistics, but
+    independent episodes are constructed once on the full chronological series
+    and only then assigned to the era containing their true entry date. This
+    prevents an era boundary from manufacturing a false threshold entry when a
+    condition was already active before the boundary.
+    """
+    ordered = sorted(points, key=lambda item: item.date)
+    global_episodes_by_spec = {
+        spec: independent_confluence_episodes(
+            ordered,
+            spec,
+            cooldown_days=cooldown_days,
+        )
+        for spec in specs
+    }
+
+    rows: list[EraStabilityRow] = []
+    for era_label, start_date, end_date in eras:
+        era_points = [point for point in ordered if start_date <= point.date <= end_date]
+        for spec in specs:
+            summary = summarize_spec(era_points, spec)
+            episodes = [
+                point
+                for point in global_episodes_by_spec[spec]
+                if start_date <= point.date <= end_date
+            ]
+            episode_returns = [
+                point.future_return_365d_pct
+                for point in episodes
+                if point.future_return_365d_pct is not None
+            ]
+            episode_drawdowns = [
+                point.future_max_drawdown_365d_pct
+                for point in episodes
+                if point.future_max_drawdown_365d_pct is not None
+            ]
+            rows.append(
+                EraStabilityRow(
+                    era=era_label,
+                    start_date=start_date,
+                    end_date=end_date,
+                    condition=spec.label,
+                    daily_count=summary.count,
+                    valid_365d=summary.valid_365d,
+                    median_return_365d_pct=summary.median_return_365d_pct,
+                    positive_365d_rate_pct=summary.positive_365d_rate_pct,
+                    drawdown_30pct_rate_pct=summary.drawdown_30pct_rate_pct,
+                    episode_count=len(episodes),
+                    episode_valid_365d=len(episode_returns),
+                    episode_median_return_365d_pct=(median(episode_returns) if episode_returns else None),
+                    episode_drawdown_30pct_rate_pct=_rate(episode_drawdowns, lambda value: value <= -30),
+                )
+            )
+    return rows

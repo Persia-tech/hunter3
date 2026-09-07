@@ -1,0 +1,30 @@
+.btc-overview-page{max-width:720px;margin:0 auto;padding:8px 0 104px;gap:14px}
+.btc-hero{padding:24px}
+.btc-price-block{padding:26px 0 18px}
+.btc-state-card{align-items:flex-start;gap:20px;padding:18px 19px}
+.btc-state-card div{gap:5px}
+.btc-state-card strong{font-size:20px;letter-spacing:-.02em}
+.btc-state-card small{max-width:520px;font-size:12px;line-height:1.5}
+.btc-state-card>svg{flex:0 0 auto;margin-top:7px}
+.btc-score-panel{padding:16px 14px}
+.btc-score-ring{width:96px;height:96px}
+.btc-score-ring strong{font-size:27px}
+.btc-section{gap:10px}
+.btc-section-heading{padding:4px 3px}
+.btc-section-heading h2{font-size:23px}
+.btc-stage-stack{gap:10px;overflow:visible;border:0;background:transparent}
+.btc-stage-row{grid-template-columns:42px minmax(0,1fr) auto;gap:13px;min-height:94px;padding:17px 18px;border:1px solid rgba(255,255,255,.075);border-radius:22px;background:rgba(255,255,255,.035);box-shadow:0 8px 24px rgba(0,0,0,.06)}
+.btc-stage-row:last-child{border-bottom:1px solid rgba(255,255,255,.075)}
+.btc-stage-row.active{background:linear-gradient(90deg,rgba(52,199,89,.12),rgba(52,199,89,.035) 70%);border-color:rgba(52,199,89,.2);box-shadow:0 10px 28px rgba(52,199,89,.06)}
+.btc-stage-row.pending{background:linear-gradient(90deg,rgba(100,210,255,.055),rgba(255,255,255,.025) 72%)}
+.btc-stage-index{width:38px;height:38px;border-radius:13px;font-size:14px}
+.btc-stage-copy{gap:4px}
+.btc-stage-copy strong{font-size:16px;letter-spacing:-.015em}
+.btc-stage-copy small{max-width:470px;font-size:11px;line-height:1.42;color:var(--text-secondary)}
+.btc-stage-status{padding:7px 9px}
+.btc-metric-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.btc-metric-tile{min-height:118px;padding:16px}
+.btc-metric-tile strong{font-size:24px}
+@media(min-width:900px){.btc-stage-row:hover{transform:translateY(-1px);border-color:rgba(255,255,255,.12)}}
+@media(max-width:720px){.btc-overview-page{max-width:none}.btc-metric-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:430px){.btc-overview-page{gap:12px;padding-bottom:96px}.btc-state-card small{font-size:11px}.btc-score-ring{width:88px;height:88px}.btc-stage-row{grid-template-columns:36px minmax(0,1fr);min-height:0;padding:15px}.btc-stage-status{grid-column:2;justify-self:start}.btc-metric-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.btc-metric-tile{min-height:108px}.btc-metric-tile strong{font-size:22px}}
