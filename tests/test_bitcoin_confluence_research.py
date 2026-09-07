@@ -86,6 +86,9 @@ def test_threshold_sensitivity_uses_predeclared_grid_without_fitting() -> None:
     points = [
         _point(start, opp=55, quantile=12, mvrv_pct=25, future=50, drawdown=-10),
         _point(start + timedelta(days=1), opp=65, quantile=8, mvrv_pct=15, future=100, drawdown=-5),
+        # Deliberately leave the loose all-three condition before the later
+        # signal so episode counting tests a true threshold re-entry.
+        _point(start + timedelta(days=50), opp=20, quantile=50, mvrv_pct=50, future=10, drawdown=-5),
         _point(start + timedelta(days=100), opp=75, quantile=4, mvrv_pct=8, future=-20, drawdown=-40),
     ]
     rows = evaluate_threshold_sensitivity(
