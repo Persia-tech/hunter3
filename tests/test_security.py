@@ -29,3 +29,23 @@ def test_stale_future_and_duplicate_payloads_are_rejected():
     assert not validate_init_data(signed_data(auth_date=int(time.time()) - 3601), TOKEN)
     assert not validate_init_data(signed_data(auth_date=int(time.time()) + 31), TOKEN)
     assert not validate_init_data(signed_data() + "&user=%7B%22id%22%3A7%7D", TOKEN)
+
+
+def test_local_dev_auth_bypass_is_explicit_and_shared_by_assets(monkeypatch):
+    from fastapi.testclient import TestClient
+    from backend.app.api.dca import create_app
+
+    monkeypatch.setenv("LOCAL_DEV_AUTH_BYPASS", "1")
+    response = TestClient(create_app()).get("/api/assets")
+    assert response.status_code == 200
+    assert response.json()["assets"]
+
+
+def test_local_dev_auth_bypass_is_off_by_default(monkeypatch):
+    from fastapi.testclient import TestClient
+    from backend.app.api.dca import create_app
+
+    monkeypatch.delenv("LOCAL_DEV_AUTH_BYPASS", raising=False)
+    monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)
+    response = TestClient(create_app()).get("/api/assets")
+    assert response.status_code == 503

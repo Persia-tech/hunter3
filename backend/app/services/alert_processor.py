@@ -38,8 +38,16 @@ class AlertProcessor:
     def process_temperature(
         self,
         temperature: MarketTemperature,
+        *,
+        extra_metrics: dict[str, Any] | None = None,
     ) -> list[AlertNotification]:
         self._repository.save_market_snapshot(temperature)
+
+        metrics = {
+            field: getattr(temperature, field)
+            for field in temperature.__dataclass_fields__
+        }
+        metrics.update(extra_metrics or {})
 
         rules = self._repository.get_alert_rules_for_symbol(
             temperature.symbol,
@@ -51,7 +59,7 @@ class AlertProcessor:
         for rule in rules:
             try:
                 current_value = self._get_metric_value(
-                    temperature,
+                    metrics,
                     rule.metric,
                 )
 
@@ -102,15 +110,15 @@ class AlertProcessor:
 
     @staticmethod
     def _get_metric_value(
-        temperature: MarketTemperature,
+        metrics: dict[str, Any],
         metric: str,
     ) -> Any:
-        if not hasattr(temperature, metric):
+        if metric not in metrics:
             raise AlertEvaluationError(
                 f"Unsupported market metric: {metric}"
             )
 
-        value = getattr(temperature, metric)
+        value = metrics[metric]
 
         if hasattr(value, "value"):
             return value.value

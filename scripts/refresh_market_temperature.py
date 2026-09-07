@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
+from datetime import date
 
 from backend.app.db.database import SessionLocal
 from backend.app.db.repository import MarketRepository
@@ -39,6 +40,36 @@ MARKET_ASSETS = [
     Asset("VDE", "Vanguard Energy ETF", AssetClass.SECTOR_ETF),
     Asset("XLB", "Materials Select Sector SPDR Fund", AssetClass.SECTOR_ETF),
 ]
+
+
+def _bitcoin_alert_metrics(temperature) -> dict[str, float | bool | None]:
+    """Build independent, point-in-time BTC alert inputs for the current run."""
+    # Keep the research stack lazy so non-Bitcoin refresh tooling stays light.
+    from backend.app.api.bitcoin_research_state import _research_state_for_day
+
+    research = _research_state_for_day(date.today())
+    quantile = research.get("quantile")
+    mvrv = research.get("mvrv")
+    top_stage2 = research.get("top_stage2")
+    return {
+        "bitcoin_quantile_percentile": (
+            quantile.get("percentile") if isinstance(quantile, dict) else None
+        ),
+        "bitcoin_mvrv_percentile": (
+            mvrv.get("percentile") if isinstance(mvrv, dict) else None
+        ),
+        "bitcoin_top_stage2_active": (
+            top_stage2.get("active") if isinstance(top_stage2, dict) else None
+        ),
+        "bitcoin_below_200d_ma": (
+            temperature.current_price < temperature.sma_200d
+            if temperature.sma_200d is not None else None
+        ),
+        "bitcoin_below_200w_ma": (
+            temperature.current_price < temperature.sma_200w
+            if temperature.sma_200w is not None else None
+        ),
+    }
 
 
 @dataclass
@@ -82,8 +113,14 @@ async def refresh_market_temperature() -> RefreshResult:
                     full_history=full_history,
                 )
 
+                extra_metrics = (
+                    _bitcoin_alert_metrics(temperature)
+                    if asset.symbol == "BTC-USD"
+                    else None
+                )
                 asset_notifications = processor.process_temperature(
-                    temperature
+                    temperature,
+                    extra_metrics=extra_metrics,
                 )
 
                 for notification in asset_notifications:

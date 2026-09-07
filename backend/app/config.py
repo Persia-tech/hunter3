@@ -41,6 +41,34 @@ class Settings:
     mini_app_url: str | None = None
 
 
+def validate_production_environment() -> None:
+    """Fail startup clearly when a production deployment is unsafe/incomplete."""
+    environment = os.getenv("ENVIRONMENT", "development").strip().lower()
+    if environment not in {"production", "prod"}:
+        return
+
+    missing = [
+        name
+        for name in (
+            "DATABASE_URL",
+            "TELEGRAM_BOT_TOKEN",
+            "MINI_APP_URL",
+            "MINI_APP_ORIGINS",
+        )
+        if not os.getenv(name, "").strip()
+    ]
+    if missing:
+        raise ConfigurationError(
+            "Missing required production settings: " + ", ".join(missing)
+        )
+    if os.getenv("LOCAL_DEV_AUTH_BYPASS", "").strip().lower() in {
+        "1", "true", "yes", "on",
+    }:
+        raise ConfigurationError(
+            "LOCAL_DEV_AUTH_BYPASS must be disabled in production."
+        )
+
+
 def load_settings() -> Settings:
     """Load settings from ``.env`` and the process environment.
 

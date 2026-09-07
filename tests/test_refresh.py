@@ -27,7 +27,7 @@ async def test_refresh_rolls_back_failed_asset_and_continues(monkeypatch):
         def full_history(self, symbol): return [object()]
     class Processor:
         def __init__(self, _repository): pass
-        def process_temperature(self, _temperature): return []
+        def process_temperature(self, _temperature, **_kwargs): return []
     assets = [SimpleNamespace(symbol="FAIL"), SimpleNamespace(symbol="OK")]
     monkeypatch.setattr(refresh, "SessionLocal", lambda: SessionContext())
     monkeypatch.setattr(refresh, "MarketRepository", repository_factory)
