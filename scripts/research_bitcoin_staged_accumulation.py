@@ -12,6 +12,7 @@ sys.path.insert(0, str(ROOT))
 
 from backend.app.services.bitcoin_confluence_research import ConfluencePoint
 from backend.app.services.bitcoin_staged_accumulation import (
+    STAGED_ALLOCATIONS,
     evaluate_staged_accumulation,
     summarize_strategies,
 )
@@ -74,10 +75,13 @@ def _write(rows) -> None:  # type: ignore[no-untyped-def]
 
 def main() -> None:
     print("BITCOIN STAGED ACCUMULATION RESEARCH")
-    print("-" * 112)
+    print("-" * 118)
     print("Each experiment starts at an independent Quantile <=10 episode.")
-    print("Fixed staged rule: 25% at Stage 1, 25% when MVRV pct <=20 also confirms, 50% at Opportunity >=60.")
-    print("Untriggered staged capital remains cash. No weights or thresholds are optimized.")
+    print("Stage 2: Quantile <=10 + MVRV pct <=20.")
+    print("Stage 3: next globally independent Opportunity >=60 episode using the same 90-day cooldown as lead-time research.")
+    print("Fixed allocation sensitivity only; no allocation is selected from future outcomes.")
+    print("Staged allocations: " + ", ".join(name.replace("Staged ", "") for name, _ in STAGED_ALLOCATIONS) + ".")
+    print("Untriggered staged capital remains cash.")
     print("Benchmarks: 100% all-in at Stage 1 and twelve equal 30-day DCA tranches.")
 
     points = _load_points()
@@ -87,7 +91,7 @@ def main() -> None:
 
     print()
     print("STRATEGY SUMMARY — COMPLETED 365-DAY STAGE-1 EPISODES")
-    print("-" * 112)
+    print("-" * 118)
     print(f"{'Strategy':24} {'Ep':>4} {'Med365':>11} {'Positive':>10} {'Med DD':>10} {'Worst DD':>10} {'Med invested':>13}")
     for row in summarize_strategies(rows):
         print(
@@ -98,7 +102,7 @@ def main() -> None:
 
     print()
     print("EPISODE DETAILS")
-    print("-" * 112)
+    print("-" * 118)
     grouped: dict[date, list] = {}
     for row in rows:
         grouped.setdefault(row.episode_date, []).append(row)
@@ -118,6 +122,8 @@ def main() -> None:
     _write(rows)
     print()
     print(f"Saved: {OUTPUT_CSV}")
+    print("Stage-3 semantics now match the lead-time study exactly: independent Opportunity episodes, not daily threshold recrossings.")
+    print("Allocation rows are sensitivity analysis only; do not choose the best-looking historical split as an optimized rule.")
     print("This is an event-study comparison, not a claim that any strategy will repeat historically observed returns.")
     print("Recent Stage-1 episodes without a full 365-day horizon are excluded rather than backfilled with future assumptions.")
     print("Done.")
