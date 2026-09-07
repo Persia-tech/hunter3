@@ -76,6 +76,7 @@ class CalculationInput(BaseModel):
 
 class RankingInput(BaseModel):
     items: list[PurchaseInput] = Field(min_length=1, max_length=100)
+    snapshot_id: str | None = Field(default=None, min_length=32, max_length=32)
 
 
 class ComparisonInput(RankingInput):
@@ -167,7 +168,10 @@ def create_router(service: OpportunityCostService) -> APIRouter:
     @configured.post("/calculate")
     def calculate(request: CalculationInput) -> dict[str, Any]:
         try:
-            return serialize(service.calculate(get_asset(request.asset), _purchases(request.items)))
+            snapshot_id = service.create_snapshot()
+            result = serialize(service.calculate(get_asset(request.asset), _purchases(request.items), snapshot_id))
+            result["snapshot_id"] = snapshot_id
+            return result
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from exc
         except MarketDataError as exc:
@@ -178,11 +182,13 @@ def create_router(service: OpportunityCostService) -> APIRouter:
         try:
             purchases = _purchases(request.items)
             selected = tuple(get_asset(symbol) for symbol in request.assets)
-            results = service.rank(selected, purchases)
+            snapshot_id = request.snapshot_id or service.create_snapshot()
+            results = service.rank(selected, purchases, snapshot_id)
             available = {result.asset.symbol for result in results}
             return {
                 "results": [serialize(result) for result in results],
                 "unavailable": [asset.symbol for asset in selected if asset.symbol not in available],
+                "snapshot_id": snapshot_id,
             }
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from exc
@@ -190,8 +196,10 @@ def create_router(service: OpportunityCostService) -> APIRouter:
     @configured.post("/best-alternatives")
     def alternatives(request: RankingInput) -> dict[str, Any]:
         try:
-            results = service.rank(tuple(SUPPORTED_ASSETS.values()), _purchases(request.items))
-            return {"rankings": [serialize(row, include_items=False) for row in results]}
+            snapshot_id = request.snapshot_id or service.create_snapshot()
+            results = service.rank(tuple(SUPPORTED_ASSETS.values()), _purchases(request.items), snapshot_id)
+            return {"rankings": [serialize(row, include_items=False) for row in results],
+                    "snapshot_id": snapshot_id}
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from exc
 

@@ -171,3 +171,28 @@ def test_compare_accepts_five_assets_and_rejects_six(monkeypatch):
         "assets": five + ["GLD"], "items": [custom_item()],
     })
     assert response.status_code == 422
+
+
+def test_current_price_snapshot_is_consistent_across_comparison_paths():
+    class MovingProvider(Provider):
+        def __init__(self):
+            super().__init__()
+            self.latest_calls: dict[str, int] = {}
+
+        def get_latest_price(self, ticker):
+            self.latest_calls[ticker] = self.latest_calls.get(ticker, 0) + 1
+            base = super().get_latest_price(ticker)
+            if base is None:
+                return None
+            return PriceRecord(base.date, base.price + self.latest_calls[ticker] - 1)
+
+    provider = MovingProvider()
+    service = OpportunityCostService(MarketDataService(provider, max_attempts=1))
+    snapshot_id = service.create_snapshot()
+    manual = service.rank((get_asset("BTC"),), purchases(), snapshot_id)[0]
+    automatic = service.rank((get_asset("AAPL"), get_asset("BTC")), purchases(), snapshot_id)
+    repeated_btc = next(result for result in automatic if result.asset.symbol == "BTC")
+
+    assert manual.current_price == repeated_btc.current_price
+    assert manual.current_value == repeated_btc.current_value
+    assert provider.latest_calls["BTC-USD"] == 1
