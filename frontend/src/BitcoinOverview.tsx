@@ -2,7 +2,7 @@ import { Activity, ArrowDownRight, ArrowUpRight, Check, Circle, Gauge, Shield, S
 import { useEffect, useMemo, useState } from 'react';
 
 import { api } from './api';
-import type { MarketTemperature } from './types';
+import type { BitcoinResearchState, MarketTemperature } from './types';
 
 type StageStatus = 'active' | 'inactive' | 'pending';
 
@@ -18,6 +18,11 @@ function formatMoney(value: number | null | undefined) {
 function formatPct(value: number | null | undefined, digits = 1) {
   if (value == null || Number.isNaN(value)) return '—';
   return `${value.toFixed(digits)}%`;
+}
+
+function formatPercentile(value: number | null | undefined) {
+  if (value == null || Number.isNaN(value)) return '—';
+  return `${value.toFixed(1)} / 100`;
 }
 
 function StageRow({
@@ -73,27 +78,42 @@ function ScoreDial({ label, value, kind }: { label: string; value: number; kind:
 
 export function BitcoinOverview({ onHome }: { onHome: () => void }) {
   const [data, setData] = useState<MarketTemperature>();
+  const [research, setResearch] = useState<BitcoinResearchState>();
   const [error, setError] = useState('');
 
   useEffect(() => {
-    api.temperatures()
-      .then((items) => {
+    Promise.all([api.temperatures(), api.bitcoinResearchState()])
+      .then(([items, researchState]) => {
         const bitcoin = items.find((item) =>
           item.symbol.toUpperCase().includes('BTC') || item.name.toLowerCase().includes('bitcoin'),
         );
         if (!bitcoin) throw new Error('Bitcoin signal snapshot is not available yet.');
         setData(bitcoin);
+        setResearch(researchState);
       })
       .catch((reason) => setError(reason instanceof Error ? reason.message : String(reason)));
   }, []);
 
   const state = useMemo(() => {
     if (!data) return null;
+    const quantilePercentile = research?.quantile?.percentile ?? null;
+    const mvrvPercentile = research?.mvrv?.percentile ?? null;
+    const stage1Bottom = quantilePercentile != null && quantilePercentile <= 10;
+    const stage2Bottom = stage1Bottom && mvrvPercentile != null && mvrvPercentile <= 20;
     const stage3Bottom = data.opportunity_score >= 60;
+    const stage1Top = mvrvPercentile != null && mvrvPercentile >= 90;
     const below200d = data.sma_200d != null && data.current_price < data.sma_200d;
-    const cheapTone = data.opportunity_score >= 60 ? 'Capitulation zone' : data.drawdown_percent <= -30 ? 'Discounted' : 'Neutral';
-    return { stage3Bottom, below200d, cheapTone };
-  }, [data]);
+    const cheapTone = stage2Bottom
+      ? 'Deep value confirmed'
+      : stage1Bottom
+        ? 'Statistically cheap'
+        : data.opportunity_score >= 60
+          ? 'Capitulation zone'
+          : data.drawdown_percent <= -30
+            ? 'Discounted'
+            : 'Neutral';
+    return { stage1Bottom, stage2Bottom, stage3Bottom, stage1Top, below200d, cheapTone };
+  }, [data, research]);
 
   if (error) {
     return (
@@ -108,7 +128,7 @@ export function BitcoinOverview({ onHome }: { onHome: () => void }) {
     );
   }
 
-  if (!data || !state) {
+  if (!data || !state || !research) {
     return (
       <div className="page-enter btc-overview-page">
         <div className="btc-loading-card">
@@ -119,6 +139,9 @@ export function BitcoinOverview({ onHome }: { onHome: () => void }) {
       </div>
     );
   }
+
+  const quantile = research.quantile;
+  const mvrv = research.mvrv;
 
   return (
     <div className="page-enter btc-overview-page">
@@ -157,8 +180,20 @@ export function BitcoinOverview({ onHome }: { onHome: () => void }) {
           <TrendingDown aria-hidden="true" />
         </div>
         <div className="btc-stage-stack">
-          <StageRow stage="1" title="Statistical value" value="Quantile percentile" status="pending" note="Research endpoint will supply the live quantile percentile." />
-          <StageRow stage="2" title="On-chain confirmation" value="MVRV percentile" status="pending" note="Live on-chain percentile will be wired into this stage." />
+          <StageRow
+            stage="1"
+            title="Statistical value"
+            value={quantile ? `Quantile ${formatPercentile(quantile.percentile)}` : 'Quantile unavailable'}
+            status={quantile ? (state.stage1Bottom ? 'active' : 'inactive') : 'pending'}
+            note="Active when the research quantile percentile is 10 or lower."
+          />
+          <StageRow
+            stage="2"
+            title="On-chain confirmation"
+            value={mvrv ? `MVRV pct ${formatPercentile(mvrv.percentile)}` : 'MVRV unavailable'}
+            status={mvrv && quantile ? (state.stage2Bottom ? 'active' : 'inactive') : 'pending'}
+            note="Active when Quantile ≤10 and MVRV historical percentile ≤20."
+          />
           <StageRow stage="3" title="Capitulation confirmation" value={`Opportunity ${Math.round(data.opportunity_score)} / 100`} status={state.stage3Bottom ? 'active' : 'inactive'} note="Active when Opportunity reaches 60 or higher." />
         </div>
       </section>
@@ -169,8 +204,14 @@ export function BitcoinOverview({ onHome }: { onHome: () => void }) {
           <Shield aria-hidden="true" />
         </div>
         <div className="btc-stage-stack">
-          <StageRow stage="1" title="On-chain overvaluation" value="MVRV percentile" status="pending" note="Primary warning activates at the fixed research threshold." />
-          <StageRow stage="2" title="Persistent weakness" value="Any-2 sustained 14d" status="pending" note="Requires rolling history; not inferred from a single snapshot." />
+          <StageRow
+            stage="1"
+            title="On-chain overvaluation"
+            value={mvrv ? `MVRV pct ${formatPercentile(mvrv.percentile)}` : 'MVRV unavailable'}
+            status={mvrv ? (state.stage1Top ? 'active' : 'inactive') : 'pending'}
+            note="Primary warning activates when MVRV historical percentile reaches 90 or higher."
+          />
+          <StageRow stage="2" title="Persistent weakness" value="Any-2 sustained 14d" status="pending" note="Requires rolling live weakness history; this remains intentionally separate." />
           <StageRow stage="3" title="Structural damage" value={data.sma_200d == null ? '200D MA unavailable' : `${formatMoney(data.sma_200d)} · 200D MA`} status={state.below200d ? 'active' : 'inactive'} note={state.below200d ? 'Price is below the 200-day moving average.' : 'Price remains above the 200-day moving average.'} />
         </div>
       </section>
@@ -181,6 +222,9 @@ export function BitcoinOverview({ onHome }: { onHome: () => void }) {
           <Activity aria-hidden="true" />
         </div>
         <div className="btc-metric-grid">
+          <MetricTile label="Quantile percentile" value={quantile ? formatPercentile(quantile.percentile) : '—'} note={quantile ? `Model date ${quantile.as_of}` : research.quantile_error} />
+          <MetricTile label="MVRV" value={mvrv ? mvrv.value.toFixed(3) : '—'} note={mvrv ? `${mvrv.freshness} · ${mvrv.as_of}` : research.mvrv_error} />
+          <MetricTile label="MVRV percentile" value={mvrv ? formatPercentile(mvrv.percentile) : '—'} note={mvrv ? `${mvrv.history_observations.toLocaleString()} observations` : undefined} />
           <MetricTile label="Weekly RSI" value={data.weekly_rsi?.toFixed(1) ?? '—'} />
           <MetricTile label="200W distance" value={formatPct(data.distance_200w_percent)} note={data.sma_200w ? `200W ${formatMoney(data.sma_200w)}` : undefined} />
           <MetricTile label="ATH drawdown" value={formatPct(data.drawdown_percent)} note={`ATH ${formatMoney(data.ath)}`} />
