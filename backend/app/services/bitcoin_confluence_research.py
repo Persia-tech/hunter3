@@ -270,13 +270,8 @@ def evaluate_threshold_sensitivity(
                         drawdown_30pct_rate_pct=summary.drawdown_30pct_rate_pct,
                         episode_count=len(episodes),
                         episode_valid_365d=len(episode_returns),
-                        episode_median_return_365d_pct=(
-                            median(episode_returns) if episode_returns else None
-                        ),
-                        episode_drawdown_30pct_rate_pct=_rate(
-                            episode_drawdowns,
-                            lambda value: value <= -30,
-                        ),
+                        episode_median_return_365d_pct=(median(episode_returns) if episode_returns else None),
+                        episode_drawdown_30pct_rate_pct=_rate(episode_drawdowns, lambda value: value <= -30),
                     )
                 )
     return rows
@@ -289,21 +284,34 @@ def evaluate_era_stability(
     specs: tuple[ConfluenceSpec, ...] = ERA_SPECS,
     cooldown_days: int = 90,
 ) -> list[EraStabilityRow]:
-    """Evaluate fixed baseline rules separately across predeclared market eras.
+    """Evaluate fixed baseline rules across predeclared market eras.
 
-    Signal construction remains point-in-time. Era boundaries only partition the
-    already-generated observations for validation; they do not alter thresholds.
+    Daily observations are partitioned by era for descriptive statistics, but
+    independent episodes are constructed once on the full chronological series
+    and only then assigned to the era containing their true entry date. This
+    prevents an era boundary from manufacturing a false threshold entry when a
+    condition was already active before the boundary.
     """
+    ordered = sorted(points, key=lambda item: item.date)
+    global_episodes_by_spec = {
+        spec: independent_confluence_episodes(
+            ordered,
+            spec,
+            cooldown_days=cooldown_days,
+        )
+        for spec in specs
+    }
+
     rows: list[EraStabilityRow] = []
     for era_label, start_date, end_date in eras:
-        era_points = [point for point in points if start_date <= point.date <= end_date]
+        era_points = [point for point in ordered if start_date <= point.date <= end_date]
         for spec in specs:
             summary = summarize_spec(era_points, spec)
-            episodes = independent_confluence_episodes(
-                era_points,
-                spec,
-                cooldown_days=cooldown_days,
-            )
+            episodes = [
+                point
+                for point in global_episodes_by_spec[spec]
+                if start_date <= point.date <= end_date
+            ]
             episode_returns = [
                 point.future_return_365d_pct
                 for point in episodes
@@ -327,13 +335,8 @@ def evaluate_era_stability(
                     drawdown_30pct_rate_pct=summary.drawdown_30pct_rate_pct,
                     episode_count=len(episodes),
                     episode_valid_365d=len(episode_returns),
-                    episode_median_return_365d_pct=(
-                        median(episode_returns) if episode_returns else None
-                    ),
-                    episode_drawdown_30pct_rate_pct=_rate(
-                        episode_drawdowns,
-                        lambda value: value <= -30,
-                    ),
+                    episode_median_return_365d_pct=(median(episode_returns) if episode_returns else None),
+                    episode_drawdown_30pct_rate_pct=_rate(episode_drawdowns, lambda value: value <= -30),
                 )
             )
     return rows
