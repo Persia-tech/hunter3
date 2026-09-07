@@ -102,6 +102,7 @@ export function BitcoinOverview({ onHome }: { onHome: () => void }) {
     const stage2Bottom = stage1Bottom && mvrvPercentile != null && mvrvPercentile <= 20;
     const stage3Bottom = data.opportunity_score >= 60;
     const stage1Top = mvrvPercentile != null && mvrvPercentile >= 90;
+    const stage2Top = research?.top_stage2?.active ?? false;
     const below200d = data.sma_200d != null && data.current_price < data.sma_200d;
     const cheapTone = stage2Bottom
       ? 'Deep value confirmed'
@@ -112,14 +113,16 @@ export function BitcoinOverview({ onHome }: { onHome: () => void }) {
           : data.drawdown_percent <= -30
             ? 'Discounted'
             : 'Neutral';
-    const interpretation = stage2Bottom
-      ? 'Statistical value and on-chain confirmation are aligned. Technical capitulation confirmation remains separate.'
-      : stage1Bottom
-        ? 'Valuation is statistically low, but on-chain and capitulation confirmation are not active yet.'
-        : stage1Top
-          ? 'On-chain valuation is elevated. Watch for persistent weakness before treating this as a de-risking confirmation.'
-          : 'No extreme accumulation or de-risking confirmation is active. Signals remain mixed or neutral.';
-    return { stage1Bottom, stage2Bottom, stage3Bottom, stage1Top, below200d, cheapTone, interpretation };
+    const interpretation = stage2Top
+      ? 'Persistent weakness has confirmed after an MVRV overvaluation warning. The structural 200-day trend remains a separate final layer.'
+      : stage2Bottom
+        ? 'Statistical value and on-chain confirmation are aligned. Technical capitulation confirmation remains separate.'
+        : stage1Bottom
+          ? 'Valuation is statistically low, but on-chain and capitulation confirmation are not active yet.'
+          : stage1Top
+            ? 'On-chain valuation is elevated. Persistent weakness has not confirmed yet.'
+            : 'No extreme accumulation or de-risking confirmation is active. Signals remain mixed or neutral.';
+    return { stage1Bottom, stage2Bottom, stage3Bottom, stage1Top, stage2Top, below200d, cheapTone, interpretation };
   }, [data, research]);
 
   if (error) {
@@ -149,6 +152,20 @@ export function BitcoinOverview({ onHome }: { onHome: () => void }) {
 
   const quantile = research.quantile;
   const mvrv = research.mvrv;
+  const topStage2 = research.top_stage2;
+  const topStage2Status: StageStatus = topStage2
+    ? (topStage2.active ? 'active' : 'inactive')
+    : (research.top_stage2_error ? 'pending' : 'inactive');
+  const topStage2Value = topStage2
+    ? topStage2.active && topStage2.confirmation_date
+      ? `Confirmed ${topStage2.confirmation_date}`
+      : topStage2.warning_date && topStage2.warning_age_days != null && topStage2.warning_age_days <= 180
+        ? `Any-2 streak ${topStage2.current_any2_streak_days} / 14`
+        : 'No recent confirmation window'
+    : 'Any-2 sustained 14d';
+  const topStage2Note = topStage2?.reason
+    ?? research.top_stage2_error
+    ?? 'Waiting for sufficient live history to evaluate the fixed persistence rule.';
 
   return (
     <div className="page-enter btc-overview-page">
@@ -224,7 +241,13 @@ export function BitcoinOverview({ onHome }: { onHome: () => void }) {
             status={mvrv ? (state.stage1Top ? 'active' : 'inactive') : 'pending'}
             note={state.stage1Top ? 'Primary overvaluation warning is active.' : 'Primary warning activates at MVRV historical percentile 90 or higher.'}
           />
-          <StageRow stage="2" title="Persistent weakness" value="Any-2 sustained 14d" status="pending" note="Requires rolling live weakness history; intentionally not inferred from one snapshot." />
+          <StageRow
+            stage="2"
+            title="Persistent weakness"
+            value={topStage2Value}
+            status={topStage2Status}
+            note={topStage2Note}
+          />
           <StageRow
             stage="3"
             title="Structural damage"
