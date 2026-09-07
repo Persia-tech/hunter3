@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import csv
 import io
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from math import sqrt
 from typing import Callable
 from urllib.parse import urlencode
@@ -18,13 +18,11 @@ from backend.app.models.onchain import BitcoinOnChainRecord
 
 COMMUNITY_BASE_URL = "https://community-api.coinmetrics.io/v4"
 ARCHIVE_BTC_CSV_URL = "https://raw.githubusercontent.com/coinmetrics/data/refs/heads/master/csv/btc.csv"
-DEFAULT_METRICS = (
-    "PriceUSD",
-    "CapMVRVCur",
-    "CapMVRVZ",
-    "CapRealUSD",
-    "NUPL",
-)
+
+# These two metrics were verified against anonymous Community access on 2026-09-06.
+# Keep the live request deliberately narrow so an unavailable derived metric cannot
+# make the whole current-data request fail.
+LIVE_COMMUNITY_METRICS = ("PriceUSD", "CapMVRVCur")
 
 
 def _parse_optional_float(value: object) -> float | None:
@@ -37,15 +35,22 @@ def _parse_optional_float(value: object) -> float | None:
 
 
 class CoinMetricsCommunityProvider:
-    """Fetch free daily Bitcoin on-chain valuation metrics.
+    """Fetch free Bitcoin MVRV plus historical reconstructed valuation metrics.
 
-    Primary source: Coin Metrics Community API.
-    Fallback source: Coin Metrics' public daily GitHub CSV archive. The archive
-    currently includes PriceUSD, CapMrktCurUSD and CapMVRVCur for BTC. When the
-    API host cannot be reached, Realized Cap and NUPL are reconstructed exactly
-    from the documented MVRV identities, and MVRV Z-Score is reconstructed from
-    the documented formula using an expanding historical standard deviation of
-    market cap. The fallback remains transparent and research-only.
+    Current/live source:
+      Coin Metrics Community API, requesting only PriceUSD and CapMVRVCur (MVRV),
+      which are confirmed available anonymously.
+
+    Historical source:
+      Coin Metrics' public BTC GitHub CSV archive. It includes PriceUSD,
+      CapMrktCurUSD and CapMVRVCur. Realized Cap and NUPL are reconstructed from
+      MVRV identities, while MVRV Z-Score is reconstructed with an expanding
+      historical market-cap standard deviation so it remains no-look-ahead.
+
+    The two sources are merged by date. Fresh Community PriceUSD/MVRV values
+    override archive values when present, while archive-only reconstructed fields
+    are preserved. This keeps historical research intact while allowing a fresh
+    daily MVRV signal without pretending reconstructed metrics are live API data.
     """
 
     def __init__(
@@ -98,8 +103,8 @@ class CoinMetricsCommunityProvider:
         if response.status_code in {401, 403}:
             raise RuntimeError(
                 f"Coin Metrics returned HTTP {response.status_code}. "
-                "The Community endpoint does not require an API key, but one or more requested "
-                "metrics may not be available to anonymous Community access."
+                "The Community endpoint does not require an API key for the verified live "
+                "PriceUSD/CapMVRVCur request, but access may have changed."
             )
         if not response.ok:
             body = response.text[:500].replace("\n", " ")
@@ -121,7 +126,7 @@ class CoinMetricsCommunityProvider:
     ) -> list[BitcoinOnChainRecord]:
         params = {
             "assets": "btc",
-            "metrics": ",".join(DEFAULT_METRICS),
+            "metrics": ",".join(LIVE_COMMUNITY_METRICS),
             "frequency": "1d",
             "start_time": start_date.isoformat(),
             "end_time": end_date.isoformat(),
@@ -142,9 +147,9 @@ class CoinMetricsCommunityProvider:
                         date=day,
                         price_usd=_parse_optional_float(item.get("PriceUSD")),
                         mvrv=_parse_optional_float(item.get("CapMVRVCur")),
-                        mvrv_z=_parse_optional_float(item.get("CapMVRVZ")),
-                        realized_cap_usd=_parse_optional_float(item.get("CapRealUSD")),
-                        nupl=_parse_optional_float(item.get("NUPL")),
+                        mvrv_z=None,
+                        realized_cap_usd=None,
+                        nupl=None,
                     )
                 )
 
@@ -165,8 +170,7 @@ class CoinMetricsCommunityProvider:
             response.raise_for_status()
         except requests.RequestException as exc:
             raise RuntimeError(
-                "Coin Metrics API failed and the public Coin Metrics GitHub CSV fallback could "
-                "not be downloaded either."
+                "The public Coin Metrics GitHub BTC archive could not be downloaded."
             ) from exc
 
         reader = csv.DictReader(io.StringIO(response.text))
@@ -205,16 +209,10 @@ class CoinMetricsCommunityProvider:
             mvrv_z = None
 
             if market_cap is not None and mvrv is not None and mvrv > 0:
-                # Coin Metrics definition: MVRV = market cap / realized cap.
                 realized_cap = market_cap / mvrv
-                # Coin Metrics definition: NUPL = (market cap - realized cap) / market cap.
                 if market_cap > 0:
                     nupl = (market_cap - realized_cap) / market_cap
 
-                # Coin Metrics definition: MVRV Z =
-                # (market cap - realized cap) / std(market cap).
-                # The archive does not include CapMVRVZ, so use an expanding
-                # population standard deviation to preserve no-look-ahead behavior.
                 if count > 1:
                     std_market_cap = sqrt(m2_market_cap / count)
                     if std_market_cap > 0:
@@ -234,6 +232,34 @@ class CoinMetricsCommunityProvider:
         rows.sort(key=lambda item: item.date)
         return rows
 
+    @staticmethod
+    def _merge_rows(
+        archive_rows: list[BitcoinOnChainRecord],
+        live_rows: list[BitcoinOnChainRecord],
+    ) -> list[BitcoinOnChainRecord]:
+        merged = {row.date: row for row in archive_rows}
+        for live in live_rows:
+            historical = merged.get(live.date)
+            merged[live.date] = BitcoinOnChainRecord(
+                date=live.date,
+                price_usd=(
+                    live.price_usd
+                    if live.price_usd is not None
+                    else (historical.price_usd if historical is not None else None)
+                ),
+                mvrv=(
+                    live.mvrv
+                    if live.mvrv is not None
+                    else (historical.mvrv if historical is not None else None)
+                ),
+                mvrv_z=historical.mvrv_z if historical is not None else None,
+                realized_cap_usd=(
+                    historical.realized_cap_usd if historical is not None else None
+                ),
+                nupl=historical.nupl if historical is not None else None,
+            )
+        return sorted(merged.values(), key=lambda item: item.date)
+
     def get_bitcoin_daily_metrics(
         self,
         *,
@@ -243,9 +269,34 @@ class CoinMetricsCommunityProvider:
         if end_date < start_date:
             raise ValueError("end_date must be on or after start_date")
 
-        try:
+        # Test/injected callers intentionally exercise the API parser alone.
+        if self._fetch_json_override is not None:
             return self._get_from_api(start_date=start_date, end_date=end_date)
+
+        archive_rows: list[BitcoinOnChainRecord] = []
+        archive_error: RuntimeError | None = None
+        try:
+            archive_rows = self._get_from_archive(start_date=start_date, end_date=end_date)
+        except RuntimeError as exc:
+            archive_error = exc
+
+        # If the archive is available, request only the overlap/latest gap from
+        # Community rather than re-downloading the entire BTC history via API.
+        if archive_rows:
+            latest_archive_day = archive_rows[-1].date
+            live_start = max(start_date, latest_archive_day - timedelta(days=2))
+        else:
+            live_start = start_date
+
+        try:
+            live_rows = self._get_from_api(start_date=live_start, end_date=end_date)
         except RuntimeError:
-            if not self.allow_archive_fallback or self._fetch_json_override is not None:
-                raise
-            return self._get_from_archive(start_date=start_date, end_date=end_date)
+            if archive_rows and self.allow_archive_fallback:
+                return archive_rows
+            if archive_error is not None:
+                raise archive_error
+            raise
+
+        if not archive_rows:
+            return live_rows
+        return self._merge_rows(archive_rows, live_rows)
