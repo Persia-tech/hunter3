@@ -59,3 +59,27 @@ def test_horizon_summary_keeps_horizons_separate() -> None:
     assert len(summaries) == 36
     assert {row.horizon_days for row in summaries} == {180, 365, 730}
     assert all(row.episodes == 1 for row in summaries)
+
+
+def test_730d_outcome_does_not_open_new_stages_after_fixed_365d_deployment_window() -> None:
+    start = date(2020, 1, 1)
+    points: list[ConfluencePoint] = []
+    for i in range(901):
+        day = start + timedelta(days=i)
+        q = 8.0
+        m = 15.0 if i >= 400 else 40.0
+        opp = 65.0 if 420 <= i <= 430 else 20.0
+        points.append(_point(day, 100.0 + i * 0.1, opp, q, m))
+
+    rows = evaluate_stage_horizon_sensitivity(points)
+    focus_730 = next(
+        row
+        for row in rows
+        if row.horizon_days == 730
+        and row.allocation == "Staged 50/25/25"
+        and row.variant == "Stage 1 + Stage 2 + Stage 3"
+    )
+
+    assert focus_730.stage2_date is None
+    assert focus_730.stage3_date is None
+    assert focus_730.invested_pct == 50.0
