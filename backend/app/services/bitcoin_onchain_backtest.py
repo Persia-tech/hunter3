@@ -31,12 +31,23 @@ class ThresholdSummary:
     drawdown_30pct_rate_pct: float | None
 
 
-def _percentile(value: float, history: list[float]) -> float | None:
+def expanding_percentile(value: float, history: list[float]) -> float | None:
+    """Return a mid-rank percentile using only the supplied historical sample.
+
+    Callers are responsible for supplying only values known through the date
+    being evaluated. Including today's observation is intentional and matches
+    the existing no-look-ahead backtest convention used by this research layer.
+    """
     if not history:
         return None
     less = sum(1 for item in history if item < value)
     equal = sum(1 for item in history if item == value)
     return 100.0 * (less + 0.5 * equal) / len(history)
+
+
+# Backward-compatible private alias for existing research code/tests.
+def _percentile(value: float, history: list[float]) -> float | None:
+    return expanding_percentile(value, history)
 
 
 def build_onchain_point_in_time_backtest(
@@ -76,8 +87,8 @@ def build_onchain_point_in_time_backtest(
                 price_usd=float(row.price_usd),
                 mvrv=mvrv,
                 mvrv_z=mvrv_z,
-                mvrv_percentile=None if mvrv is None else _percentile(mvrv, mvrv_history),
-                mvrv_z_percentile=None if mvrv_z is None else _percentile(mvrv_z, mvrv_z_history),
+                mvrv_percentile=None if mvrv is None else expanding_percentile(mvrv, mvrv_history),
+                mvrv_z_percentile=None if mvrv_z is None else expanding_percentile(mvrv_z, mvrv_z_history),
                 future_return_180d_pct=row.future_return_180d_pct,
                 future_return_365d_pct=row.future_return_365d_pct,
                 future_max_drawdown_365d_pct=row.future_max_drawdown_365d_pct,
