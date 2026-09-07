@@ -13,6 +13,7 @@ import {
   LineChart,
   LoaderCircle,
   RefreshCw,
+  ReceiptText,
   Search,
   SlidersHorizontal,
   Sparkles,
@@ -36,6 +37,7 @@ import {
 import { api } from './api';
 import { getAssetIcon } from './assetIcons';
 import { BitcoinOverview } from './BitcoinOverview';
+import { OpportunityCost } from './OpportunityCost';
 import { money, percent, quantity } from './format';
 import { tg } from './telegram';
 import type { AlertRule, Asset, DcaResult, LumpResult, MarketTemperature, Screen } from './types';
@@ -730,6 +732,7 @@ function Alerts({ onHome }: { onHome: () => void }) {
 }
 
 const FEATURES = [
+  { screen: 'opportunity' as Screen, title: 'Opportunity Cost', description: 'What if you invested instead?', icon: ReceiptText, tone: 'green' },
   { screen: 'dca' as Screen, title: 'DCA Calculator', description: 'Build a consistent investing plan', icon: TrendingUp, tone: 'blue' },
   { screen: 'compare' as Screen, title: 'Compare Assets', description: 'Compare long-term outcomes', icon: ArrowLeftRight, tone: 'indigo' },
   { screen: 'lump' as Screen, title: 'DCA vs Lump Sum', description: 'Compare two capital strategies', icon: WalletCards, tone: 'slate' },
@@ -777,6 +780,7 @@ const NAV_ITEMS = [
   { screen: 'bitcoin' as Screen, label: 'Bitcoin', icon: LineChart },
   { screen: 'dca' as Screen, label: 'Calculate', icon: TrendingUp },
   { screen: 'compare' as Screen, label: 'Compare', icon: ArrowLeftRight },
+  { screen: 'opportunity' as Screen, label: 'Opportunity', icon: ReceiptText },
   { screen: 'markets' as Screen, label: 'Markets', icon: BarChart3 },
   { screen: 'temperature' as Screen, label: 'Signals', icon: ThermometerSun },
   { screen: 'alerts' as Screen, label: 'Alerts', icon: Bell },
@@ -841,6 +845,7 @@ export function App() {
   else if (screen === 'markets') content = <Markets onHome={() => go('home')} />;
   else if (screen === 'temperature') content = <Temperature onHome={() => go('home')} />;
   else if (screen === 'alerts') content = <Alerts onHome={() => go('home')} />;
+  else if (screen === 'opportunity') content = <OpportunityCost assets={assets} />;
   else if (result && screen === 'compare') content = <CompareResults data={result as CompareResult} />;
   else if (result && screen === 'lump') content = <LumpResults result={result as LumpResult} />;
   else if (result) content = <DcaResults result={result as DcaResult} />;
