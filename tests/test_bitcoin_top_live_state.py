@@ -48,7 +48,11 @@ def test_warning_dates_require_entry_and_respect_cooldown() -> None:
 def test_live_stage_is_inactive_when_no_mvrv_warning_exists() -> None:
     start = date(2024, 1, 1)
     prices = [PriceRecord(date=start + timedelta(days=i), price=Decimal("50000")) for i in range(420)]
-    onchain = [_onchain(start + timedelta(days=i), 1.2 + i * 0.0001) for i in range(420)]
+
+    # Keep MVRV genuinely neutral. A monotonically rising synthetic series is
+    # always near the top of its own expanding history and therefore correctly
+    # creates a >=90th-percentile warning even when the absolute values look low.
+    onchain = [_onchain(start + timedelta(days=i), 1.2) for i in range(420)]
 
     state = evaluate_live_top_stage2(prices, onchain, as_of=start + timedelta(days=419))
 
