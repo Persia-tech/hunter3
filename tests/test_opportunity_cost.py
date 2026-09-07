@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 from backend.app.data.product_catalog import PRODUCT_BY_ID
@@ -20,10 +20,12 @@ class Provider:
         values = {
             "AAPL": [
                 PriceRecord(date(2017, 11, 6), Decimal("10")),
+                PriceRecord(date(2018, 11, 23), Decimal("15")),
                 PriceRecord(date(2020, 11, 17), Decimal("20")),
             ],
             "BTC-USD": [
                 PriceRecord(date(2017, 11, 3), Decimal("5")),
+                PriceRecord(date(2018, 11, 23), Decimal("8")),
                 PriceRecord(date(2020, 11, 17), Decimal("25")),
             ],
             "NVDA": [PriceRecord(date(2020, 11, 17), Decimal("5"))],
@@ -89,3 +91,83 @@ def test_catalog_and_calculation_endpoints(monkeypatch):
     })
     assert response.status_code == 200
     assert response.json()["summary"]["total_spent"] == "1998"
+
+
+def custom_item(**overrides):
+    custom = {
+        "id": "custom:sony-tv", "name": "Sony OLED TV",
+        "purchase_date": "2018-11-23", "price_usd": "1999.99",
+        "quantity": 1, "category": "Electronics",
+    }
+    custom.update(overrides)
+    return {"custom": custom}
+
+
+def opportunity_client(monkeypatch):
+    monkeypatch.setenv("LOCAL_DEV_AUTH_BYPASS", "1")
+    provider = Provider()
+    market = MarketDataService(provider, max_attempts=1)
+
+    class Calculator:
+        _market_data = market
+
+    return TestClient(create_app(calculator=Calculator())), provider
+
+
+def test_custom_purchase_calculation_and_quantity(monkeypatch):
+    client, _ = opportunity_client(monkeypatch)
+    response = client.post("/api/opportunity-cost/calculate", json={
+        "asset": "AAPL", "items": [custom_item(quantity=2)],
+    })
+    assert response.status_code == 200
+    result = response.json()
+    assert result["summary"]["total_spent"] == "3999.98"
+    assert Decimal(result["summary"]["investment_units"]) == Decimal("3999.98") / Decimal("15")
+    assert result["items"][0]["product"]["custom"] is True
+    assert result["items"][0]["quantity"] == 2
+
+
+def test_invalid_custom_price_date_and_future_date(monkeypatch):
+    client, _ = opportunity_client(monkeypatch)
+    base = {"asset": "AAPL"}
+    assert client.post("/api/opportunity-cost/calculate", json={**base, "items": [custom_item(price_usd="0")]}).status_code == 422
+    assert client.post("/api/opportunity-cost/calculate", json={**base, "items": [custom_item(purchase_date="not-a-date")]}).status_code == 422
+    future = (date.today() + timedelta(days=366)).isoformat()
+    response = client.post("/api/opportunity-cost/calculate", json={**base, "items": [custom_item(purchase_date=future)]})
+    assert response.status_code == 422
+    assert "future" in response.text
+
+
+def test_custom_purchase_before_asset_inception(monkeypatch):
+    client, _ = opportunity_client(monkeypatch)
+    response = client.post("/api/opportunity-cost/calculate", json={
+        "asset": "NVDA", "items": [custom_item()],
+    })
+    assert response.status_code == 200
+    assert response.json()["items"][0]["eligible"] is False
+
+
+def test_compare_multiple_assets_ranking_mixed_items_and_cache(monkeypatch):
+    client, provider = opportunity_client(monkeypatch)
+    payload = {"assets": ["AAPL", "BTC", "NVDA"], "items": [
+        {"product_id": "iphone-x", "quantity": 1}, custom_item(),
+    ]}
+    response = client.post("/api/opportunity-cost/compare", json=payload)
+    assert response.status_code == 200
+    body = response.json()
+    values = [Decimal(result["summary"]["current_value"]) for result in body["results"]]
+    assert values == sorted(values, reverse=True)
+    assert {item["product"]["custom"] for item in body["results"][0]["items"]} == {False, True}
+    assert provider.history_calls == 3
+    client.post("/api/opportunity-cost/compare", json=payload)
+    assert provider.history_calls == 3
+
+
+def test_compare_accepts_five_assets_and_rejects_six(monkeypatch):
+    client, _ = opportunity_client(monkeypatch)
+    five = ["BTC", "AAPL", "NVDA", "SPY", "QQQ"]
+    assert client.post("/api/opportunity-cost/compare", json={"assets": five, "items": [custom_item()]}).status_code == 200
+    response = client.post("/api/opportunity-cost/compare", json={
+        "assets": five + ["GLD"], "items": [custom_item()],
+    })
+    assert response.status_code == 422

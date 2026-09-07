@@ -22,6 +22,7 @@ class Product:
     active: bool = True
     display_order: int = 0
     image_url: str | None = None
+    custom: bool = False
 
 
 @dataclass(frozen=True, slots=True)

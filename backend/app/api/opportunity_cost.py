@@ -1,11 +1,11 @@
 """Opportunity Cost catalog and calculation routes."""
 
 from datetime import date
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from backend.app.api.dca import require_telegram
 from backend.app.data.product_catalog import PRODUCT_BY_ID, PRODUCTS
@@ -17,9 +17,56 @@ from backend.app.services.opportunity_cost import OpportunityCostService
 router = APIRouter(prefix="/api/opportunity-cost", tags=["opportunity-cost"])
 
 
-class PurchaseInput(BaseModel):
-    product_id: str
+class CustomPurchaseInput(BaseModel):
+    id: str = Field(min_length=8, max_length=100, pattern=r"^custom:[A-Za-z0-9_-]+$")
+    name: str = Field(min_length=1, max_length=120)
+    purchase_date: date
+    price_usd: str
     quantity: int = Field(default=1, ge=1, le=99)
+    category: str = Field(default="Other", max_length=60)
+
+    @field_validator("name")
+    @classmethod
+    def strip_name(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("name must not be blank")
+        return value
+
+    @field_validator("category")
+    @classmethod
+    def normalize_category(cls, value: str) -> str:
+        return value.strip() or "Other"
+
+    @field_validator("purchase_date")
+    @classmethod
+    def not_future(cls, value: date) -> date:
+        if value > date.today():
+            raise ValueError("purchase date cannot be in the future")
+        return value
+
+    @field_validator("price_usd")
+    @classmethod
+    def positive_price(cls, value: str) -> str:
+        try:
+            price = Decimal(value)
+        except InvalidOperation as exc:
+            raise ValueError("price must be a valid decimal") from exc
+        if not price.is_finite() or price <= 0:
+            raise ValueError("price must be greater than zero")
+        return value
+
+
+class PurchaseInput(BaseModel):
+    product_id: str | None = None
+    quantity: int = Field(default=1, ge=1, le=99)
+    custom: CustomPurchaseInput | None = None
+
+    @model_validator(mode="after")
+    def exactly_one_source(self) -> "PurchaseInput":
+        if (self.product_id is None) == (self.custom is None):
+            raise ValueError("provide either product_id or custom")
+        return self
 
 
 class CalculationInput(BaseModel):
@@ -31,6 +78,18 @@ class RankingInput(BaseModel):
     items: list[PurchaseInput] = Field(min_length=1, max_length=100)
 
 
+class ComparisonInput(RankingInput):
+    assets: list[str] = Field(min_length=1, max_length=5)
+
+    @field_validator("assets")
+    @classmethod
+    def unique_assets(cls, value: list[str]) -> list[str]:
+        normalized = [symbol.strip().upper() for symbol in value]
+        if len(set(normalized)) != len(normalized):
+            raise ValueError("assets must be unique")
+        return normalized
+
+
 def _product(product: Product) -> dict[str, Any]:
     return {"id": product.id, "brand": product.brand, "category": product.category,
             "family": product.family, "model": product.model,
@@ -38,20 +97,33 @@ def _product(product: Product) -> dict[str, Any]:
             "release_year": product.release_date.year,
             "launch_price_usd": str(product.launch_price_usd), "image_url": product.image_url,
             "source_url": product.source_url, "active": product.active,
-            "display_order": product.display_order}
+            "display_order": product.display_order, "custom": product.custom}
 
 
 def _purchases(items: list[PurchaseInput]) -> tuple[Purchase, ...]:
     purchases = []
     seen = set()
     for item in items:
-        if item.product_id in seen:
-            raise ValueError(f"Duplicate product: {item.product_id}")
-        seen.add(item.product_id)
-        product = PRODUCT_BY_ID.get(item.product_id)
-        if not product or not product.active:
-            raise ValueError(f"Unknown product: {item.product_id}")
-        purchases.append(Purchase(product, item.quantity))
+        custom = item.custom
+        identity = item.product_id if item.product_id is not None else custom.id if custom else ""
+        if identity in seen:
+            raise ValueError(f"Duplicate product: {identity}")
+        seen.add(identity)
+        if custom:
+            product = Product(
+                id=custom.id, brand="Custom", category=custom.category,
+                family="Custom purchase", model=custom.name,
+                release_date=custom.purchase_date,
+                launch_price_usd=Decimal(custom.price_usd), source_url="",
+                custom=True,
+            )
+            quantity = custom.quantity
+        else:
+            product = PRODUCT_BY_ID.get(item.product_id or "")
+            if not product or not product.active:
+                raise ValueError(f"Unknown product: {item.product_id}")
+            quantity = item.quantity
+        purchases.append(Purchase(product, quantity))
     return tuple(purchases)
 
 
@@ -100,6 +172,20 @@ def create_router(service: OpportunityCostService) -> APIRouter:
             raise HTTPException(422, str(exc)) from exc
         except MarketDataError as exc:
             raise HTTPException(503, "Market data is temporarily unavailable") from exc
+
+    @configured.post("/compare")
+    def compare(request: ComparisonInput) -> dict[str, Any]:
+        try:
+            purchases = _purchases(request.items)
+            selected = tuple(get_asset(symbol) for symbol in request.assets)
+            results = service.rank(selected, purchases)
+            available = {result.asset.symbol for result in results}
+            return {
+                "results": [serialize(result) for result in results],
+                "unavailable": [asset.symbol for asset in selected if asset.symbol not in available],
+            }
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
 
     @configured.post("/best-alternatives")
     def alternatives(request: RankingInput) -> dict[str, Any]:
