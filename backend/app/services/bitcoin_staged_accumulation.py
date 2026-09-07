@@ -2,8 +2,7 @@
 
 The strategy rules are fixed in advance and are not optimized from future
 returns. Each experiment begins at an independent Quantile <= 10 episode and
-compares three ways to deploy the same initial $100 of cash over the following
-365 days.
+compares fixed deployment schedules over the following 365 days.
 """
 
 from __future__ import annotations
@@ -27,6 +26,12 @@ STAGE2_SPEC = ConfluenceSpec(
     require_mvrv=True,
 )
 STAGE3_SPEC = ConfluenceSpec("Stage 3: Opportunity >= 60", require_opportunity=True)
+
+STAGED_ALLOCATIONS: tuple[tuple[str, tuple[float, float, float]], ...] = (
+    ("Staged 25/25/50", (25.0, 25.0, 50.0)),
+    ("Staged 33/33/34", (33.0, 33.0, 34.0)),
+    ("Staged 50/25/25", (50.0, 25.0, 25.0)),
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -62,6 +67,19 @@ def _find_first(
 ) -> ConfluencePoint | None:
     return next(
         (point for point in points if start <= point.date <= end and condition_matches(point, spec)),
+        None,
+    )
+
+
+def _first_independent_confirmation(
+    opportunity_episodes: list[ConfluencePoint],
+    *,
+    start: date,
+    end: date,
+) -> ConfluencePoint | None:
+    """Return the first globally independent Opportunity episode in the window."""
+    return next(
+        (episode for episode in opportunity_episodes if start <= episode.date <= end),
         None,
     )
 
@@ -120,11 +138,17 @@ def evaluate_staged_accumulation(
     horizon_days: int = 365,
     cooldown_days: int = 90,
 ) -> list[StrategyResult]:
-    """Compare fixed staged deployment against all-in Stage 1 and fixed DCA.
+    """Compare fixed staged deployments against all-in Stage 1 and fixed DCA.
 
-    Staged rule: 25% at Quantile <=10, 25% when MVRV also <=20, and 50%
-    when Opportunity >=60. Untriggered capital remains cash. Benchmark DCA uses
-    twelve equal tranches every 30 days beginning at the Stage-1 date.
+    Stage 3 uses the same definition as the lead-time study: a globally
+    independent Opportunity >=60 episode under the same 90-day cooldown rule.
+    This prevents a daily threshold recrossing from being treated as a new
+    capitulation confirmation when it belongs to an already-open Opportunity
+    episode.
+
+    Fixed staged allocation sensitivity is descriptive only:
+    25/25/50, 33/33/34, and 50/25/25. Untriggered capital remains cash.
+    Benchmark DCA uses twelve equal tranches every 30 days beginning at Stage 1.
     """
     if horizon_days < 330:
         raise ValueError("horizon_days must be at least 330")
@@ -134,6 +158,11 @@ def evaluate_staged_accumulation(
     stage1_episodes = independent_confluence_episodes(
         ordered,
         STAGE1_SPEC,
+        cooldown_days=cooldown_days,
+    )
+    opportunity_episodes = independent_confluence_episodes(
+        ordered,
+        STAGE3_SPEC,
         cooldown_days=cooldown_days,
     )
 
@@ -147,13 +176,11 @@ def evaluate_staged_accumulation(
         stage2 = _find_first(window, start=entry.date, end=end_date, spec=STAGE2_SPEC)
         stage3 = None
         if stage2 is not None:
-            stage3 = _find_first(window, start=stage2.date, end=end_date, spec=STAGE3_SPEC)
-
-        staged_purchases = [(entry.date, 25.0)]
-        if stage2 is not None:
-            staged_purchases.append((stage2.date, 25.0))
-        if stage3 is not None:
-            staged_purchases.append((stage3.date, 50.0))
+            stage3 = _first_independent_confirmation(
+                opportunity_episodes,
+                start=stage2.date,
+                end=end_date,
+            )
 
         results.append(
             _simulate(
@@ -165,16 +192,24 @@ def evaluate_staged_accumulation(
                 stage3_date=stage3.date if stage3 else None,
             )
         )
-        results.append(
-            _simulate(
-                window,
-                purchases=staged_purchases,
-                strategy="Staged 25/25/50",
-                episode_date=entry.date,
-                stage2_date=stage2.date if stage2 else None,
-                stage3_date=stage3.date if stage3 else None,
+
+        for strategy, allocation in STAGED_ALLOCATIONS:
+            stage1_amount, stage2_amount, stage3_amount = allocation
+            purchases = [(entry.date, stage1_amount)]
+            if stage2 is not None:
+                purchases.append((stage2.date, stage2_amount))
+            if stage3 is not None:
+                purchases.append((stage3.date, stage3_amount))
+            results.append(
+                _simulate(
+                    window,
+                    purchases=purchases,
+                    strategy=strategy,
+                    episode_date=entry.date,
+                    stage2_date=stage2.date if stage2 else None,
+                    stage3_date=stage3.date if stage3 else None,
+                )
             )
-        )
 
         dca_purchases: list[tuple[date, float]] = []
         tranche = 100.0 / 12.0
@@ -199,7 +234,12 @@ def evaluate_staged_accumulation(
 
 def summarize_strategies(rows: list[StrategyResult]) -> list[StrategySummary]:
     summaries: list[StrategySummary] = []
-    for strategy in ("All-in at Stage 1", "Staged 25/25/50", "12-tranche 30d DCA"):
+    strategy_order = (
+        "All-in at Stage 1",
+        *(name for name, _ in STAGED_ALLOCATIONS),
+        "12-tranche 30d DCA",
+    )
+    for strategy in strategy_order:
         selected = [row for row in rows if row.strategy == strategy]
         returns = [row.return_365d_pct for row in selected]
         drawdowns = [row.max_drawdown_pct for row in selected]
@@ -209,7 +249,11 @@ def summarize_strategies(rows: list[StrategyResult]) -> list[StrategySummary]:
                 strategy=strategy,
                 episodes=len(selected),
                 median_return_365d_pct=median(returns) if returns else None,
-                positive_rate_pct=(100.0 * sum(value > 0 for value in returns) / len(returns) if returns else None),
+                positive_rate_pct=(
+                    100.0 * sum(value > 0 for value in returns) / len(returns)
+                    if returns
+                    else None
+                ),
                 median_max_drawdown_pct=median(drawdowns) if drawdowns else None,
                 worst_max_drawdown_pct=min(drawdowns) if drawdowns else None,
                 median_invested_pct=median(invested) if invested else None,
