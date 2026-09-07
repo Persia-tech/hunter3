@@ -6,28 +6,11 @@ import { getAssetIcon } from './assetIcons';
 import { money, percent } from './format';
 import type { Asset, CustomPurchase, OpportunityRanking, OpportunityResult, Product } from './types';
 
-const PURCHASES_KEY = 'hunter3.opportunity-purchases.v1';
-const CUSTOM_KEY = 'hunter3.opportunity-custom-purchases.v1';
-const ASSETS_KEY = 'hunter3.opportunity-assets.v1';
 const MAX_ASSETS = 5;
 const PREVIEW_COUNT = 4;
 const CUSTOM_CATEGORIES = ['Electronics', 'Car', 'Travel', 'Luxury', 'Home', 'Subscription', 'Other'];
 type Selection = Record<string, number>;
 type CustomDraft = Omit<CustomPurchase, 'id' | 'custom'>;
-
-function stored<T>(key: string, fallback: T): T {
-  try {
-    const value: unknown = JSON.parse(localStorage.getItem(key) ?? 'null');
-    return value !== null ? value as T : fallback;
-  } catch { return fallback; }
-}
-
-function savedAssets(): string[] {
-  const saved = stored<unknown>(ASSETS_KEY, ['BTC']);
-  if (!Array.isArray(saved)) return ['BTC'];
-  const unique = [...new Set(saved.filter((value): value is string => typeof value === 'string'))].slice(0, MAX_ASSETS);
-  return unique.length ? unique : ['BTC'];
-}
 
 const blankDraft = (): CustomDraft => ({ name: '', purchase_date: '', price_usd: '', quantity: 1, category: 'Electronics' });
 const dollars = (value: string) => money(value);
@@ -53,9 +36,9 @@ export function OpportunityCost({ assets }: { assets: Asset[] }) {
   const [categories, setCategories] = useState<string[]>([]);
   const [category, setCategory] = useState('All');
   const [catalogExpanded, setCatalogExpanded] = useState(false);
-  const [selected, setSelected] = useState<Selection>(() => stored(PURCHASES_KEY, {}));
-  const [customs, setCustoms] = useState<CustomPurchase[]>(() => stored(CUSTOM_KEY, []));
-  const [selectedAssets, setSelectedAssets] = useState<string[]>(savedAssets);
+  const [selected, setSelected] = useState<Selection>({});
+  const [customs, setCustoms] = useState<CustomPurchase[]>([]);
+  const [selectedAssets, setSelectedAssets] = useState<string[]>(['BTC']);
   const [assetPicker, setAssetPicker] = useState(false);
   const [assetQuery, setAssetQuery] = useState('');
   const [assetMessage, setAssetMessage] = useState('');
@@ -75,9 +58,6 @@ export function OpportunityCost({ assets }: { assets: Asset[] }) {
   const [error, setError] = useState('');
 
   useEffect(() => { api.opportunityProducts().then((data) => { setProducts(data.products); setCategories(data.categories); }).catch(() => setError('Could not load the product catalog. Try again.')); }, []);
-  useEffect(() => { localStorage.setItem(PURCHASES_KEY, JSON.stringify(selected)); }, [selected]);
-  useEffect(() => { localStorage.setItem(CUSTOM_KEY, JSON.stringify(customs)); }, [customs]);
-  useEffect(() => { localStorage.setItem(ASSETS_KEY, JSON.stringify(selectedAssets)); }, [selectedAssets]);
 
   const requestItems = useMemo(() => [
     ...Object.entries(selected).filter(([, quantity]) => quantity > 0).map(([product_id, quantity]) => ({ product_id, quantity })),
@@ -96,6 +76,22 @@ export function OpportunityCost({ assets }: { assets: Asset[] }) {
   const matchingAssets = assets.filter((asset) => `${asset.symbol} ${asset.name}`.toLowerCase().includes(assetQuery.toLowerCase()));
 
   const resetResults = () => { setResults([]); setRankings([]); setSnapshotId(undefined); };
+  const startOver = () => {
+    setSelected({});
+    setCustoms([]);
+    setSelectedAssets(['BTC']);
+    setActiveAsset('BTC');
+    setCategory('All');
+    setCatalogExpanded(false);
+    setShowPurchases(false);
+    setShowTimeline(false);
+    setShowRankings(false);
+    setAssetPicker(false);
+    setShowCustom(false);
+    setAssetMessage('');
+    setError('');
+    resetResults();
+  };
   const changeCatalogQuantity = (id: string, delta: number) => setSelected((current) => {
     const next = { ...current, [id]: (current[id] ?? 0) + delta };
     if (next[id] <= 0) delete next[id];
@@ -149,7 +145,7 @@ export function OpportunityCost({ assets }: { assets: Asset[] }) {
     {error && <p className="opportunity-error" role="alert">{error}</p>}
 
     <section className="opportunity-section opportunity-purchases-section">
-      <div className="section-heading"><div><h2>Purchases</h2><p>Choose from the catalog or add your own.</p></div>{requestItems.length > 0 && <button className="text-button" onClick={() => { setSelected({}); setCustoms([]); resetResults(); }}><Trash2/> Clear</button>}</div>
+      <div className="section-heading"><div><h2>Purchases</h2><p>Choose from the catalog or add your own.</p></div>{requestItems.length > 0 && <button className="text-button" onClick={startOver}><Trash2/> Start over</button>}</div>
       <button className="add-custom-button" onClick={() => openCustom()}><Plus/> Add custom purchase</button>
       <div className="chip-row" aria-label="Product categories"><button className={category === 'All' ? 'active' : ''} onClick={() => { setCategory('All'); setCatalogExpanded(false); }}>All</button>{categories.map((item) => <button className={category === item ? 'active' : ''} onClick={() => setCategory(item)} key={item}>{item}</button>)}</div>
       <div className="product-grid">{visibleProducts.map((product) => <button aria-pressed={Boolean(selected[product.id])} className={`product-card ${selected[product.id] ? 'selected' : ''}`} onClick={() => { changeCatalogQuantity(product.id, selected[product.id] ? -selected[product.id] : 1); resetResults(); }} key={product.id}><span className="product-placeholder"><Package/></span><span><strong>{product.model}</strong><small>{product.release_year} · {dollars(product.launch_price_usd)}</small></span><i>{selected[product.id] ? <Check/> : <Plus/>}</i></button>)}</div>
