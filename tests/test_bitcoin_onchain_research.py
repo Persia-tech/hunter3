@@ -10,18 +10,15 @@ from backend.app.services.bitcoin_onchain_research import (
 )
 
 
-def test_coinmetrics_provider_parses_daily_metrics_and_pagination() -> None:
+def test_coinmetrics_provider_parses_live_mvrv_and_pagination() -> None:
     payloads = [
         {
             "data": [
                 {
                     "asset": "btc",
-                    "time": "2020-01-01T00:00:00Z",
-                    "PriceUSD": "7000",
-                    "CapMVRVCur": "1.25",
-                    "CapMVRVZ": "0.75",
-                    "CapRealUSD": "100000000000",
-                    "NUPL": "0.20",
+                    "time": "2026-09-04T00:00:00Z",
+                    "PriceUSD": "79681.55",
+                    "CapMVRVCur": "1.4994",
                 }
             ],
             "next_page_url": "https://example.test/page2",
@@ -30,13 +27,16 @@ def test_coinmetrics_provider_parses_daily_metrics_and_pagination() -> None:
             "data": [
                 {
                     "asset": "btc",
-                    "time": "2020-01-02T00:00:00Z",
-                    "PriceUSD": "7100",
-                    "CapMVRVCur": "1.30",
-                    "CapMVRVZ": None,
-                    "CapRealUSD": "101000000000",
-                    "NUPL": "0.23",
-                }
+                    "time": "2026-09-05T00:00:00Z",
+                    "PriceUSD": "79817.32",
+                    "CapMVRVCur": "1.5014",
+                },
+                {
+                    "asset": "btc",
+                    "time": "2026-09-06T00:00:00Z",
+                    "PriceUSD": "80319.97",
+                    "CapMVRVCur": None,
+                },
             ]
         },
     ]
@@ -48,20 +48,65 @@ def test_coinmetrics_provider_parses_daily_metrics_and_pagination() -> None:
 
     provider = CoinMetricsCommunityProvider(fetch_json=fake_fetch)
     rows = provider.get_bitcoin_daily_metrics(
-        start_date=date(2020, 1, 1),
-        end_date=date(2020, 1, 2),
+        start_date=date(2026, 9, 4),
+        end_date=date(2026, 9, 6),
     )
 
-    assert len(rows) == 2
-    assert rows[0].date == date(2020, 1, 1)
-    assert rows[0].mvrv == 1.25
-    assert rows[0].mvrv_z == 0.75
-    assert rows[1].mvrv_z is None
+    assert len(rows) == 3
+    assert rows[0].mvrv == 1.4994
+    assert rows[1].mvrv == 1.5014
+    assert rows[2].mvrv is None
+    assert rows[0].mvrv_z is None
+    assert rows[0].realized_cap_usd is None
+    assert rows[0].nupl is None
     assert called[1] == "https://example.test/page2"
     assert "CapMVRVCur" in called[0]
-    assert "CapMVRVZ" in called[0]
-    assert "CapRealUSD" in called[0]
-    assert "NUPL" in called[0]
+    assert "PriceUSD" in called[0]
+    assert "CapMVRVZ" not in called[0]
+    assert "CapRealUSD" not in called[0]
+    assert "NUPL" not in called[0]
+
+
+def test_merge_live_rows_preserves_archive_reconstructed_fields() -> None:
+    archive = [
+        BitcoinOnChainRecord(
+            date=date(2026, 5, 23),
+            price_usd=76000.0,
+            mvrv=1.41,
+            mvrv_z=0.74,
+            realized_cap_usd=1.08e12,
+            nupl=0.29,
+        )
+    ]
+    live = [
+        BitcoinOnChainRecord(
+            date=date(2026, 5, 23),
+            price_usd=76100.0,
+            mvrv=1.42,
+            mvrv_z=None,
+            realized_cap_usd=None,
+            nupl=None,
+        ),
+        BitcoinOnChainRecord(
+            date=date(2026, 5, 24),
+            price_usd=77000.0,
+            mvrv=1.45,
+            mvrv_z=None,
+            realized_cap_usd=None,
+            nupl=None,
+        ),
+    ]
+
+    merged = CoinMetricsCommunityProvider._merge_rows(archive, live)
+
+    assert len(merged) == 2
+    assert merged[0].price_usd == 76100.0
+    assert merged[0].mvrv == 1.42
+    assert merged[0].mvrv_z == 0.74
+    assert merged[0].realized_cap_usd == 1.08e12
+    assert merged[0].nupl == 0.29
+    assert merged[1].mvrv == 1.45
+    assert merged[1].mvrv_z is None
 
 
 def test_future_labels_do_not_change_raw_onchain_metrics() -> None:
