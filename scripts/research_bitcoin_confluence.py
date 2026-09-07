@@ -14,6 +14,7 @@ sys.path.insert(0, str(ROOT))
 from backend.app.services.bitcoin_confluence_research import (
     DEFAULT_SPECS,
     ConfluencePoint,
+    evaluate_threshold_sensitivity,
     independent_confluence_episodes,
     summarize_default_confluence,
 )
@@ -23,6 +24,7 @@ CYCLE_CSV = REPORTS_DIR / "bitcoin_cycle_backtest.csv"
 QUANTILE_CSV = REPORTS_DIR / "bitcoin_quantile_backtest.csv"
 ONCHAIN_CSV = REPORTS_DIR / "bitcoin_onchain_backtest.csv"
 OUTPUT_CSV = REPORTS_DIR / "bitcoin_confluence_research.csv"
+SENSITIVITY_CSV = REPORTS_DIR / "bitcoin_confluence_threshold_sensitivity.csv"
 
 
 def _float_or_none(value: str | None) -> float | None:
@@ -103,12 +105,98 @@ def _write_csv(points: list[ConfluencePoint]) -> None:
             )
 
 
+def _write_sensitivity_csv(rows) -> None:  # type: ignore[no-untyped-def]
+    SENSITIVITY_CSV.parent.mkdir(parents=True, exist_ok=True)
+    with SENSITIVITY_CSV.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.writer(handle)
+        writer.writerow(
+            (
+                "opportunity_threshold",
+                "quantile_threshold",
+                "mvrv_percentile_threshold",
+                "daily_count",
+                "valid_365d",
+                "median_return_365d_pct",
+                "positive_365d_rate_pct",
+                "gain_50pct_365d_rate_pct",
+                "drawdown_30pct_rate_pct",
+                "episode_count",
+                "episode_valid_365d",
+                "episode_median_return_365d_pct",
+                "episode_drawdown_30pct_rate_pct",
+            )
+        )
+        for row in rows:
+            writer.writerow(
+                (
+                    row.opportunity_threshold,
+                    row.quantile_threshold,
+                    row.mvrv_percentile_threshold,
+                    row.daily_count,
+                    row.valid_365d,
+                    row.median_return_365d_pct,
+                    row.positive_365d_rate_pct,
+                    row.gain_50pct_365d_rate_pct,
+                    row.drawdown_30pct_rate_pct,
+                    row.episode_count,
+                    row.episode_valid_365d,
+                    row.episode_median_return_365d_pct,
+                    row.episode_drawdown_30pct_rate_pct,
+                )
+            )
+
+
+def _print_sensitivity(rows) -> None:  # type: ignore[no-untyped-def]
+    print()
+    print("ALL-THREE THRESHOLD SENSITIVITY (PREDECLARED GRID; NOT OPTIMIZATION)")
+    print("-" * 120)
+    print("Opportunity thresholds: 50 / 60 / 70")
+    print("Quantile thresholds:     5 / 10 / 15 / 20")
+    print("MVRV pct thresholds:     10 / 20 / 30")
+    print("Primary view below is independent 90-day-cooldown episodes.")
+    print()
+    print(
+        f"{'Opp':>5} {'Q<=':>5} {'MVRV<=':>7} {'Days':>7} {'Ep':>4} {'ValidEp':>7} "
+        f"{'Ep Med365':>11} {'Ep DD<=-30':>12} {'Daily Med365':>13}"
+    )
+    for row in rows:
+        print(
+            f"{row.opportunity_threshold:>5.0f} {row.quantile_threshold:>5.0f} "
+            f"{row.mvrv_percentile_threshold:>7.0f} {row.daily_count:>7} {row.episode_count:>4} "
+            f"{row.episode_valid_365d:>7} {_fmt(row.episode_median_return_365d_pct):>11} "
+            f"{_fmt(row.episode_drawdown_30pct_rate_pct):>12} {_fmt(row.median_return_365d_pct):>13}"
+        )
+
+    # Structural robustness summary: how many grid cells retain enough independent
+    # evidence to be interpretable, without choosing a winner from future returns.
+    usable = [row for row in rows if row.episode_valid_365d >= 3]
+    positive = [
+        row
+        for row in usable
+        if row.episode_median_return_365d_pct is not None
+        and row.episode_median_return_365d_pct > 0
+    ]
+    low_drawdown = [
+        row
+        for row in usable
+        if row.episode_drawdown_30pct_rate_pct is not None
+        and row.episode_drawdown_30pct_rate_pct <= 25
+    ]
+    print()
+    print("ROBUSTNESS COUNTS (descriptive, not model selection)")
+    print("-" * 120)
+    print(f"Grid cells:                                      {len(rows)}")
+    print(f"Cells with >=3 valid independent 365d episodes: {len(usable)}")
+    print(f"Of those, cells with positive median 365d:      {len(positive)}")
+    print(f"Of those, cells with DD<=-30 rate <=25%:        {len(low_drawdown)}")
+
+
 def main() -> None:
     print("BITCOIN SIGNAL CONFLUENCE RESEARCH")
     print("-" * 108)
     print("Using existing point-in-time/no-look-ahead research CSVs.")
     print("No weights are fitted and no production score is changed.")
-    print("Thresholds are predeclared: Opportunity >=60, Quantile <=10, MVRV percentile <=20.")
+    print("Baseline thresholds are predeclared: Opportunity >=60, Quantile <=10, MVRV percentile <=20.")
 
     points = _join_points()
     if not points:
@@ -151,6 +239,9 @@ def main() -> None:
                 f"min={_fmt(point.future_max_drawdown_365d_pct):>10}"
             )
 
+    sensitivity = evaluate_threshold_sensitivity(points)
+    _print_sensitivity(sensitivity)
+
     latest = points[-1]
     print()
     print("LATEST DATE PRESENT IN ALL THREE HISTORICAL RESEARCH SERIES")
@@ -162,8 +253,11 @@ def main() -> None:
     print("Note: this common historical endpoint may lag the separately fetched live MVRV snapshot.")
 
     _write_csv(points)
+    _write_sensitivity_csv(sensitivity)
     print()
     print(f"Saved: {OUTPUT_CSV}")
+    print(f"Saved: {SENSITIVITY_CSV}")
+    print("Sensitivity grid is for robustness checking only; do not choose the best-looking cell as a fitted rule.")
     print("Interpret daily counts cautiously because neighboring days are autocorrelated.")
     print("Independent episodes are the more important comparison for deciding whether confluence adds value.")
     print("Done.")
