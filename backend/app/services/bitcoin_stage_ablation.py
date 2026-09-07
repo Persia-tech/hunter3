@@ -73,16 +73,10 @@ def _first_match(
     *,
     start: date,
     end: date,
-    require_stage2: bool = False,
 ) -> ConfluencePoint | None:
     for point in points:
-        if not (start <= point.date <= end):
-            continue
-        if require_stage2 and not (
-            point.quantile_percentile <= 10.0 and point.mvrv_percentile <= 20.0
-        ):
-            continue
-        return point
+        if start <= point.date <= end:
+            return point
     return None
 
 
@@ -140,6 +134,7 @@ def evaluate_stage_ablation(
     *,
     horizon_days: int = 365,
     cooldown_days: int = 90,
+    deployment_window_days: int = 365,
 ) -> list[AblationResult]:
     """Evaluate predeclared stage ablations for every fixed allocation schedule.
 
@@ -148,11 +143,17 @@ def evaluate_stage_ablation(
     globally independent Opportunity >=60 episode after Stage 1 (or, for the
     full three-stage variant, after Stage 2). No omitted tranche is reassigned.
 
-    ``horizon_days`` only changes the evaluation window. Signal thresholds,
-    cooldown semantics, and allocation schedules remain unchanged.
+    ``horizon_days`` changes only the outcome-measurement window. New Stage-2 or
+    Stage-3 deployments are never allowed later than ``deployment_window_days``
+    after Stage 1. For horizons shorter than that deployment window, only stages
+    observable by the outcome date can be executed. This prevents a 730-day
+    outcome study from silently turning a later, unrelated cycle signal into a
+    new tranche of the original accumulation episode.
     """
     if horizon_days < 1:
         raise ValueError("horizon_days must be positive")
+    if deployment_window_days < 1:
+        raise ValueError("deployment_window_days must be positive")
 
     ordered = sorted(points, key=lambda item: item.date)
     by_date = {point.date: point for point in ordered}
@@ -165,24 +166,34 @@ def evaluate_stage_ablation(
 
     rows: list[AblationResult] = []
     for entry in stage1_episodes:
-        end_date = entry.date + timedelta(days=horizon_days)
-        if end_date not in by_date:
+        outcome_end_date = entry.date + timedelta(days=horizon_days)
+        if outcome_end_date not in by_date:
             continue
-        window = [point for point in ordered if entry.date <= point.date <= end_date]
+
+        deployment_end_date = min(
+            outcome_end_date,
+            entry.date + timedelta(days=deployment_window_days),
+        )
+        window = [
+            point for point in ordered if entry.date <= point.date <= outcome_end_date
+        ]
+        deployment_points = [
+            point for point in ordered if entry.date <= point.date <= deployment_end_date
+        ]
 
         stage2 = next(
             (
                 point
-                for point in window
+                for point in deployment_points
                 if point.quantile_percentile <= 10.0 and point.mvrv_percentile <= 20.0
             ),
             None,
         )
         stage3_from_stage1 = _first_match(
-            stage3_episodes, start=entry.date, end=end_date
+            stage3_episodes, start=entry.date, end=deployment_end_date
         )
         stage3_after_stage2 = (
-            _first_match(stage3_episodes, start=stage2.date, end=end_date)
+            _first_match(stage3_episodes, start=stage2.date, end=deployment_end_date)
             if stage2 is not None
             else None
         )
@@ -216,12 +227,18 @@ def evaluate_stage_ablation(
                         episode_date=entry.date,
                         allocation=allocation_name,
                         variant=variant,
-                        stage2_date=(stage2.date if stage2 is not None and "Stage 2" in variant else None),
+                        stage2_date=(
+                            stage2.date
+                            if stage2 is not None and "Stage 2" in variant
+                            else None
+                        ),
                         stage3_date=(
                             stage3_after_stage2.date
-                            if variant == "Stage 1 + Stage 2 + Stage 3" and stage3_after_stage2 is not None
+                            if variant == "Stage 1 + Stage 2 + Stage 3"
+                            and stage3_after_stage2 is not None
                             else stage3_from_stage1.date
-                            if variant == "Stage 1 + Stage 3" and stage3_from_stage1 is not None
+                            if variant == "Stage 1 + Stage 3"
+                            and stage3_from_stage1 is not None
                             else None
                         ),
                         horizon_days=horizon_days,
