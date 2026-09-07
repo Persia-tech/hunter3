@@ -706,18 +706,27 @@ function Temperature({ onHome }: { onHome: () => void }) {
 }
 
 function Alerts({ onHome }: { onHome: () => void }) {
+  const presets = [
+    {label:'BTC quantile enters ≤10',metric:'bitcoin_quantile_percentile',operator:'below_or_equal',value:10},
+    {label:'BTC MVRV percentile enters ≤20',metric:'bitcoin_mvrv_percentile',operator:'below_or_equal',value:20},
+    {label:'BTC opportunity enters ≥60',metric:'opportunity_score',operator:'above_or_equal',value:60},
+    {label:'BTC MVRV percentile enters ≥90',metric:'bitcoin_mvrv_percentile',operator:'above_or_equal',value:90},
+    {label:'BTC Top Stage 2 becomes active',metric:'bitcoin_top_stage2_active',operator:'equal',value:1},
+    {label:'BTC crosses below 200D MA',metric:'bitcoin_below_200d_ma',operator:'equal',value:1},
+    {label:'BTC crosses below 200W MA',metric:'bitcoin_below_200w_ma',operator:'equal',value:1},
+  ];
   const [rules, setRules] = useState<AlertRule[]>();
   const [error, setError] = useState('');
-  const [symbol, setSymbol] = useState('BTC-USD');
-  const [value, setValue] = useState('60');
+  const [presetIndex, setPresetIndex] = useState(2);
   const load = useCallback(() => api.alerts().then(setRules).catch((reason) => setError(reason.message)), []);
   useEffect(() => {
     void load();
   }, [load]);
-  const create = () => api.createAlert({scope_type:'symbol',scope_value:symbol,metric:'opportunity_score',operator:'above_or_equal',numeric_value:Number(value),notify_on_enter:true,notify_on_exit:false,cooldown_minutes:60,delivery_channel:'telegram'}).then(load).catch((reason) => setError(reason.message));
+  const create = () => { const preset=presets[presetIndex]; return api.createAlert({scope_type:'symbol',scope_value:'BTC-USD',metric:preset.metric,operator:preset.operator,numeric_value:preset.value,notify_on_enter:true,notify_on_exit:false,cooldown_minutes:60,delivery_channel:'telegram'}).then(load).catch((reason) => setError(reason.message)); };
+  const describe = (rule: AlertRule) => presets.find((preset) => preset.metric===rule.metric && preset.operator===rule.operator && preset.value===rule.numeric_value)?.label ?? `${rule.metric} ${rule.operator} ${rule.numeric_value ?? rule.text_value}`;
   if (error) return <ErrorState message={error} retry={() => {setError('');load();}} home={onHome}/>;
   if (!rules) return <LoadingState/>;
-  return <div className="page-enter markets-page"><header className="screen-header"><p className="eyebrow">ALERTS</p><h1>Stay informed, calmly</h1><p>Hunter sends a Telegram message only when your signal changes.</p></header><section className="surface alert-builder"><p className="natural-alert">Alert me when <label><span className="sr-only">Asset symbol</span><input value={symbol} onChange={(event)=>setSymbol(event.target.value.toUpperCase())}/></label> Opportunity reaches <label><span className="sr-only">Opportunity score</span><input type="number" min="0" max="100" value={value} onChange={(event)=>setValue(event.target.value)}/></label></p><button className="button primary" onClick={create}>Create alert</button></section>{rules.length ? <div className="alert-list">{rules.map((rule)=><article className="alert-card" key={rule.id}><span className={`status-dot ${rule.enabled?'enabled':'paused'}`} aria-label={rule.enabled?'Enabled':'Paused'} /><span className="asset-copy"><strong>{rule.scope_value ?? 'All assets'}</strong><small>Opportunity reaches {rule.numeric_value ?? rule.text_value}</small></span><button className="button tertiary" onClick={()=>api.setAlertEnabled(rule.id,!rule.enabled).then(load)}>{rule.enabled?'Pause':'Enable'}</button><button className="delete-button" aria-label={`Delete alert for ${rule.scope_value ?? 'all assets'}`} onClick={()=>api.deleteAlert(rule.id).then(load)}><Trash2 aria-hidden="true"/></button></article>)}</div> : <section className="surface premium-empty"><Bell aria-hidden="true"/><h2>No alerts yet</h2><p>Create a signal alert and Hunter will keep watch for you.</p></section>}</div>;
+  return <div className="page-enter markets-page"><header className="screen-header"><p className="eyebrow">ALERTS</p><h1>Stay informed, calmly</h1><p>Hunter sends a Telegram message only when your signal changes.</p></header><section className="surface alert-builder"><label>Bitcoin condition<select aria-label="Bitcoin alert condition" value={presetIndex} onChange={(event)=>setPresetIndex(Number(event.target.value))}>{presets.map((preset,index)=><option key={preset.label} value={index}>{preset.label}</option>)}</select></label><button className="button primary" onClick={create}>Create alert</button></section>{rules.length ? <div className="alert-list">{rules.map((rule)=><article className="alert-card" key={rule.id}><span className={`status-dot ${rule.enabled?'enabled':'paused'}`} aria-label={rule.enabled?'Enabled':'Paused'} /><span className="asset-copy"><strong>{rule.scope_value ?? 'All assets'}</strong><small>{describe(rule)}</small></span><button className="button tertiary" onClick={()=>api.setAlertEnabled(rule.id,!rule.enabled).then(load)}>{rule.enabled?'Pause':'Enable'}</button><button className="delete-button" aria-label={`Delete alert for ${rule.scope_value ?? 'all assets'}`} onClick={()=>api.deleteAlert(rule.id).then(load)}><Trash2 aria-hidden="true"/></button></article>)}</div> : <section className="surface premium-empty"><Bell aria-hidden="true"/><h2>No alerts yet</h2><p>Create a signal alert and Hunter will keep watch for you.</p></section>}</div>;
 }
 
 const FEATURES = [

@@ -11,10 +11,9 @@ from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, field_validator
 
-from backend.app.api.alerts import router as alerts_router
-from backend.app.api.security import validate_init_data
+from backend.app.api.alerts import require_telegram_user, router as alerts_router
 from backend.app.api.market_temperature import router as market_temperature_router
-from backend.app.config import MAX_COMPARE_ASSETS
+from backend.app.config import MAX_COMPARE_ASSETS, validate_production_environment
 from backend.app.models.asset import SUPPORTED_ASSETS, get_asset
 from backend.app.models.comparison import DCAComparisonResult
 from backend.app.models.dca import DCAFrequency, DCAResult
@@ -162,25 +161,8 @@ def require_telegram(
         Header(alias="X-Telegram-Init-Data"),
     ] = None,
 ) -> None:
-    token = os.getenv(
-        "TELEGRAM_BOT_TOKEN",
-        "",
-    ).strip()
-
-    if not token:
-        raise HTTPException(
-            status_code=503,
-            detail="Telegram authentication is not configured",
-        )
-
-    if not validate_init_data(
-        init_data or "",
-        token,
-    ):
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid Telegram session",
-        )
+    """Apply the shared Telegram authentication policy to calculator routes."""
+    require_telegram_user(init_data)
 
 
 def create_app(
@@ -189,6 +171,7 @@ def create_app(
     lump_sum: DCAvsLumpSumService | None = None,
     prices: CurrentPricesService | None = None,
 ) -> FastAPI:
+    validate_production_environment()
     if calculator is None:
         market = MarketDataService(
             YFinanceProvider()
