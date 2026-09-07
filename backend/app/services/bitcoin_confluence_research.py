@@ -2,7 +2,8 @@
 
 This module intentionally does not create a composite score or fit weights. It
 joins already point-in-time/no-look-ahead research outputs by date and evaluates
-predeclared threshold combinations and nearby threshold sensitivity.
+predeclared threshold combinations, nearby threshold sensitivity, and fixed-era
+stability.
 """
 
 from __future__ import annotations
@@ -59,6 +60,23 @@ class ThresholdSensitivityRow:
     episode_drawdown_30pct_rate_pct: float | None
 
 
+@dataclass(frozen=True, slots=True)
+class EraStabilityRow:
+    era: str
+    start_date: date
+    end_date: date
+    condition: str
+    daily_count: int
+    valid_365d: int
+    median_return_365d_pct: float | None
+    positive_365d_rate_pct: float | None
+    drawdown_30pct_rate_pct: float | None
+    episode_count: int
+    episode_valid_365d: int
+    episode_median_return_365d_pct: float | None
+    episode_drawdown_30pct_rate_pct: float | None
+
+
 DEFAULT_SPECS = (
     ConfluenceSpec("Opportunity >= 60", require_opportunity=True),
     ConfluenceSpec("Quantile <= 10", require_quantile=True),
@@ -79,6 +97,24 @@ ALL_THREE_SPEC = ConfluenceSpec(
     require_opportunity=True,
     require_quantile=True,
     require_mvrv=True,
+)
+
+DEFAULT_ERAS = (
+    ("2016-2019", date(2016, 9, 15), date(2019, 12, 31)),
+    ("2020-2022", date(2020, 1, 1), date(2022, 12, 31)),
+    ("2023-2026", date(2023, 1, 1), date(2026, 12, 31)),
+)
+
+ERA_SPECS = (
+    ConfluenceSpec("Opportunity >= 60", require_opportunity=True),
+    ConfluenceSpec("Quantile <= 10", require_quantile=True),
+    ConfluenceSpec("MVRV pct <= 20", require_mvrv=True),
+    ConfluenceSpec(
+        "All three baseline",
+        require_opportunity=True,
+        require_quantile=True,
+        require_mvrv=True,
+    ),
 )
 
 
@@ -243,4 +279,61 @@ def evaluate_threshold_sensitivity(
                         ),
                     )
                 )
+    return rows
+
+
+def evaluate_era_stability(
+    points: list[ConfluencePoint],
+    *,
+    eras: tuple[tuple[str, date, date], ...] = DEFAULT_ERAS,
+    specs: tuple[ConfluenceSpec, ...] = ERA_SPECS,
+    cooldown_days: int = 90,
+) -> list[EraStabilityRow]:
+    """Evaluate fixed baseline rules separately across predeclared market eras.
+
+    Signal construction remains point-in-time. Era boundaries only partition the
+    already-generated observations for validation; they do not alter thresholds.
+    """
+    rows: list[EraStabilityRow] = []
+    for era_label, start_date, end_date in eras:
+        era_points = [point for point in points if start_date <= point.date <= end_date]
+        for spec in specs:
+            summary = summarize_spec(era_points, spec)
+            episodes = independent_confluence_episodes(
+                era_points,
+                spec,
+                cooldown_days=cooldown_days,
+            )
+            episode_returns = [
+                point.future_return_365d_pct
+                for point in episodes
+                if point.future_return_365d_pct is not None
+            ]
+            episode_drawdowns = [
+                point.future_max_drawdown_365d_pct
+                for point in episodes
+                if point.future_max_drawdown_365d_pct is not None
+            ]
+            rows.append(
+                EraStabilityRow(
+                    era=era_label,
+                    start_date=start_date,
+                    end_date=end_date,
+                    condition=spec.label,
+                    daily_count=summary.count,
+                    valid_365d=summary.valid_365d,
+                    median_return_365d_pct=summary.median_return_365d_pct,
+                    positive_365d_rate_pct=summary.positive_365d_rate_pct,
+                    drawdown_30pct_rate_pct=summary.drawdown_30pct_rate_pct,
+                    episode_count=len(episodes),
+                    episode_valid_365d=len(episode_returns),
+                    episode_median_return_365d_pct=(
+                        median(episode_returns) if episode_returns else None
+                    ),
+                    episode_drawdown_30pct_rate_pct=_rate(
+                        episode_drawdowns,
+                        lambda value: value <= -30,
+                    ),
+                )
+            )
     return rows
