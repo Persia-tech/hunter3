@@ -148,3 +148,30 @@ def test_era_stability_partitions_validation_without_changing_thresholds() -> No
     assert third.daily_count == 1
     assert third.episode_count == 1
     assert third.episode_median_return_365d_pct == 120.0
+
+
+def test_era_boundary_does_not_create_artificial_episode() -> None:
+    spec = ConfluenceSpec("Opportunity >= 60", require_opportunity=True)
+    points = [
+        _point(date(2022, 12, 30), opp=70, quantile=50, mvrv_pct=50, future=90),
+        _point(date(2022, 12, 31), opp=70, quantile=50, mvrv_pct=50, future=80),
+        _point(date(2023, 1, 1), opp=70, quantile=50, mvrv_pct=50, future=70),
+        _point(date(2023, 1, 2), opp=70, quantile=50, mvrv_pct=50, future=60),
+        _point(date(2023, 1, 3), opp=20, quantile=50, mvrv_pct=50, future=50),
+        _point(date(2023, 5, 1), opp=70, quantile=50, mvrv_pct=50, future=40),
+    ]
+    eras = (
+        ("2022", date(2022, 1, 1), date(2022, 12, 31)),
+        ("2023", date(2023, 1, 1), date(2023, 12, 31)),
+    )
+
+    rows = evaluate_era_stability(points, eras=eras, specs=(spec,), cooldown_days=90)
+    first, second = rows
+
+    assert first.daily_count == 2
+    assert first.episode_count == 1
+    assert first.episode_median_return_365d_pct == 90.0
+
+    assert second.daily_count == 3
+    assert second.episode_count == 1
+    assert second.episode_median_return_365d_pct == 40.0
