@@ -64,7 +64,8 @@ def test_untriggered_later_stages_leave_cash_uninvested() -> None:
 def test_stage3_uses_independent_opportunity_episode_not_daily_recrossing() -> None:
     start = date(2023, 1, 1)
     points: list[ConfluencePoint] = []
-    for i in range(366):
+    # Stage 1 begins on day 54, so provide at least 365 days after that entry.
+    for i in range(420):
         day = start + timedelta(days=i)
         q = 50.0
         m = 50.0
