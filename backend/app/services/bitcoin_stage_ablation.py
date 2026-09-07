@@ -18,7 +18,6 @@ from backend.app.services.bitcoin_confluence_research import (
 )
 from backend.app.services.bitcoin_staged_accumulation import (
     STAGE1_SPEC,
-    STAGE2_SPEC,
     STAGE3_SPEC,
     STAGED_ALLOCATIONS,
 )
@@ -33,8 +32,14 @@ class AblationResult:
     stage3_date: date | None
     invested_pct: float
     average_entry_price: float | None
-    return_365d_pct: float
+    horizon_days: int
+    return_pct: float
     max_drawdown_pct: float
+
+    @property
+    def return_365d_pct(self) -> float:
+        """Backward-compatible alias for the original 365-day report code."""
+        return self.return_pct
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,11 +47,17 @@ class AblationSummary:
     allocation: str
     variant: str
     episodes: int
-    median_return_365d_pct: float | None
+    horizon_days: int
+    median_return_pct: float | None
     positive_rate_pct: float | None
     median_max_drawdown_pct: float | None
     worst_max_drawdown_pct: float | None
     median_invested_pct: float | None
+
+    @property
+    def median_return_365d_pct(self) -> float | None:
+        """Backward-compatible alias for the original 365-day report code."""
+        return self.median_return_pct
 
 
 VARIANTS = (
@@ -84,6 +95,7 @@ def _simulate(
     variant: str,
     stage2_date: date | None,
     stage3_date: date | None,
+    horizon_days: int,
 ) -> AblationResult:
     cash = 100.0
     btc = 0.0
@@ -117,7 +129,8 @@ def _simulate(
         stage3_date=stage3_date,
         invested_pct=spent,
         average_entry_price=average_entry,
-        return_365d_pct=values[-1] - 100.0,
+        horizon_days=horizon_days,
+        return_pct=values[-1] - 100.0,
         max_drawdown_pct=max_drawdown,
     )
 
@@ -134,7 +147,13 @@ def evaluate_stage_ablation(
     Quantile <=10 + MVRV <=20 confirmation after Stage 1. Stage 3 is the first
     globally independent Opportunity >=60 episode after Stage 1 (or, for the
     full three-stage variant, after Stage 2). No omitted tranche is reassigned.
+
+    ``horizon_days`` only changes the evaluation window. Signal thresholds,
+    cooldown semantics, and allocation schedules remain unchanged.
     """
+    if horizon_days < 1:
+        raise ValueError("horizon_days must be positive")
+
     ordered = sorted(points, key=lambda item: item.date)
     by_date = {point.date: point for point in ordered}
     stage1_episodes = independent_confluence_episodes(
@@ -205,6 +224,7 @@ def evaluate_stage_ablation(
                             if variant == "Stage 1 + Stage 3" and stage3_from_stage1 is not None
                             else None
                         ),
+                        horizon_days=horizon_days,
                     )
                 )
     return rows
@@ -212,30 +232,34 @@ def evaluate_stage_ablation(
 
 def summarize_stage_ablation(rows: list[AblationResult]) -> list[AblationSummary]:
     summaries: list[AblationSummary] = []
-    for allocation_name, _ in STAGED_ALLOCATIONS:
-        for variant in VARIANTS:
-            selected = [
-                row
-                for row in rows
-                if row.allocation == allocation_name and row.variant == variant
-            ]
-            returns = [row.return_365d_pct for row in selected]
-            drawdowns = [row.max_drawdown_pct for row in selected]
-            invested = [row.invested_pct for row in selected]
-            summaries.append(
-                AblationSummary(
-                    allocation=allocation_name,
-                    variant=variant,
-                    episodes=len(selected),
-                    median_return_365d_pct=median(returns) if returns else None,
-                    positive_rate_pct=(
-                        100.0 * sum(value > 0 for value in returns) / len(returns)
-                        if returns
-                        else None
-                    ),
-                    median_max_drawdown_pct=median(drawdowns) if drawdowns else None,
-                    worst_max_drawdown_pct=min(drawdowns) if drawdowns else None,
-                    median_invested_pct=median(invested) if invested else None,
+    horizons = sorted({row.horizon_days for row in rows})
+    for horizon_days in horizons:
+        horizon_rows = [row for row in rows if row.horizon_days == horizon_days]
+        for allocation_name, _ in STAGED_ALLOCATIONS:
+            for variant in VARIANTS:
+                selected = [
+                    row
+                    for row in horizon_rows
+                    if row.allocation == allocation_name and row.variant == variant
+                ]
+                returns = [row.return_pct for row in selected]
+                drawdowns = [row.max_drawdown_pct for row in selected]
+                invested = [row.invested_pct for row in selected]
+                summaries.append(
+                    AblationSummary(
+                        allocation=allocation_name,
+                        variant=variant,
+                        episodes=len(selected),
+                        horizon_days=horizon_days,
+                        median_return_pct=median(returns) if returns else None,
+                        positive_rate_pct=(
+                            100.0 * sum(value > 0 for value in returns) / len(returns)
+                            if returns
+                            else None
+                        ),
+                        median_max_drawdown_pct=median(drawdowns) if drawdowns else None,
+                        worst_max_drawdown_pct=min(drawdowns) if drawdowns else None,
+                        median_invested_pct=median(invested) if invested else None,
+                    )
                 )
-            )
     return summaries
