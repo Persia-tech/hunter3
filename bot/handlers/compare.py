@@ -48,8 +48,8 @@ LOGGER = logging.getLogger(__name__)
 ) = range(20, 27)
 COMPARE_DATA_KEY = "compare"
 COMPARISON_SERVICE_KEY = "dca_comparison_service"
-COMPARE = "âœ… Compare"
-CANCEL = "âŒ Cancel"
+COMPARE = "✅ Compare"
+CANCEL = "❌ Cancel"
 
 
 def _flow(context: ContextTypes.DEFAULT_TYPE) -> dict[str, Any]:
@@ -68,7 +68,7 @@ def _text(update: Update) -> str:
 def _asset_keyboard(selected: list[str]) -> InlineKeyboardMarkup:
     buttons = [
         InlineKeyboardButton(
-            f"{'âœ…' if symbol in selected else 'â¬œ'} {symbol}",
+            f"{'✅' if symbol in selected else '⬜'} {symbol}",
             callback_data=f"compare:asset:{symbol}",
         )
         for symbol in SUPPORTED_ASSETS
@@ -76,8 +76,8 @@ def _asset_keyboard(selected: list[str]) -> InlineKeyboardMarkup:
     rows = [buttons[index : index + 3] for index in range(0, len(buttons), 3)]
     rows.append(
         [
-            InlineKeyboardButton("âœ… Done", callback_data="compare:done"),
-            InlineKeyboardButton("âŒ Cancel", callback_data="compare:cancel"),
+            InlineKeyboardButton("✅ Done", callback_data="compare:done"),
+            InlineKeyboardButton("❌ Cancel", callback_data="compare:cancel"),
         ]
     )
     return InlineKeyboardMarkup(rows)
@@ -154,7 +154,7 @@ async def compare_period(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     flow["start_date"], flow["end_date"] = start, end
     keyboard = ReplyKeyboardMarkup((tuple(FREQUENCY_LABELS),), resize_keyboard=True)
     await update.effective_message.reply_text(
-        f"Period: {start.isoformat()} â†’ {end.isoformat()}\n\nChoose a frequency:",
+        f"Period: {start.isoformat()} → {end.isoformat()}\n\nChoose a frequency:",
         reply_markup=keyboard,
     )
     return COMPARE_FREQUENCY
@@ -181,7 +181,7 @@ async def compare_start_date(
     if calendar:
         calendar["target"] = "end"
         await update.effective_message.reply_text(
-            f"âœ… Start date: {entered.isoformat()}\n\nChoose end date. "
+            f"✅ Start date: {entered.isoformat()}\n\nChoose end date. "
             "You can also type YYYY-MM-DD.",
             reply_markup=build_year_picker(today.year, max_date=today),
         )
@@ -245,7 +245,7 @@ async def compare_amount(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     confirmation = (
         "Please confirm:\n\n"
         f"Assets:\n{', '.join(flow['assets'])}\n\n"
-        f"Period:\n{flow['start_date'].isoformat()} â†’ {flow['end_date'].isoformat()}\n\n"
+        f"Period:\n{flow['start_date'].isoformat()} → {flow['end_date'].isoformat()}\n\n"
         f"Frequency:\n{frequency.title()}\n\n"
         f"Investment:\n{format_currency(amount)} per asset per {period_label}\n\n"
         "Important:\nEach asset receives the full contribution independently."
@@ -337,7 +337,7 @@ async def cancel_compare(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 async def menu_from_compare(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     _clear(context)
     await update.effective_message.reply_text(
-        "Main menu â€” choose an option:", reply_markup=build_main_menu()
+        "Main menu — choose an option:", reply_markup=build_main_menu()
     )
     return ConversationHandler.END
 

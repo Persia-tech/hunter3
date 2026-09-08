@@ -17,6 +17,7 @@ dist/
 *.db
 *.sqlite
 *.sqlite3
+reports/
 
 # Editors / OS
 .vscode/

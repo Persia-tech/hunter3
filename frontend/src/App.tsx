@@ -13,6 +13,7 @@ import {
   LineChart,
   LoaderCircle,
   RefreshCw,
+  ReceiptText,
   Search,
   SlidersHorizontal,
   Sparkles,
@@ -35,6 +36,8 @@ import {
 
 import { api } from './api';
 import { getAssetIcon } from './assetIcons';
+import { BitcoinOverview } from './BitcoinOverview';
+import { OpportunityCost } from './OpportunityCost';
 import { money, percent, quantity } from './format';
 import { tg } from './telegram';
 import type { AlertRule, Asset, DcaResult, LumpResult, MarketTemperature, Screen } from './types';
@@ -705,21 +708,31 @@ function Temperature({ onHome }: { onHome: () => void }) {
 }
 
 function Alerts({ onHome }: { onHome: () => void }) {
+  const presets = [
+    {label:'BTC quantile enters ≤10',metric:'bitcoin_quantile_percentile',operator:'below_or_equal',value:10},
+    {label:'BTC MVRV percentile enters ≤20',metric:'bitcoin_mvrv_percentile',operator:'below_or_equal',value:20},
+    {label:'BTC opportunity enters ≥60',metric:'opportunity_score',operator:'above_or_equal',value:60},
+    {label:'BTC MVRV percentile enters ≥90',metric:'bitcoin_mvrv_percentile',operator:'above_or_equal',value:90},
+    {label:'BTC Top Stage 2 becomes active',metric:'bitcoin_top_stage2_active',operator:'equal',value:1},
+    {label:'BTC crosses below 200D MA',metric:'bitcoin_below_200d_ma',operator:'equal',value:1},
+    {label:'BTC crosses below 200W MA',metric:'bitcoin_below_200w_ma',operator:'equal',value:1},
+  ];
   const [rules, setRules] = useState<AlertRule[]>();
   const [error, setError] = useState('');
-  const [symbol, setSymbol] = useState('BTC-USD');
-  const [value, setValue] = useState('60');
+  const [presetIndex, setPresetIndex] = useState(2);
   const load = useCallback(() => api.alerts().then(setRules).catch((reason) => setError(reason.message)), []);
   useEffect(() => {
     void load();
   }, [load]);
-  const create = () => api.createAlert({scope_type:'symbol',scope_value:symbol,metric:'opportunity_score',operator:'above_or_equal',numeric_value:Number(value),notify_on_enter:true,notify_on_exit:false,cooldown_minutes:60,delivery_channel:'telegram'}).then(load).catch((reason) => setError(reason.message));
+  const create = () => { const preset=presets[presetIndex]; return api.createAlert({scope_type:'symbol',scope_value:'BTC-USD',metric:preset.metric,operator:preset.operator,numeric_value:preset.value,notify_on_enter:true,notify_on_exit:false,cooldown_minutes:60,delivery_channel:'telegram'}).then(load).catch((reason) => setError(reason.message)); };
+  const describe = (rule: AlertRule) => presets.find((preset) => preset.metric===rule.metric && preset.operator===rule.operator && preset.value===rule.numeric_value)?.label ?? `${rule.metric} ${rule.operator} ${rule.numeric_value ?? rule.text_value}`;
   if (error) return <ErrorState message={error} retry={() => {setError('');load();}} home={onHome}/>;
   if (!rules) return <LoadingState/>;
-  return <div className="page-enter markets-page"><header className="screen-header"><p className="eyebrow">ALERTS</p><h1>Stay informed, calmly</h1><p>Hunter sends a Telegram message only when your signal changes.</p></header><section className="surface alert-builder"><p className="natural-alert">Alert me when <label><span className="sr-only">Asset symbol</span><input value={symbol} onChange={(event)=>setSymbol(event.target.value.toUpperCase())}/></label> Opportunity reaches <label><span className="sr-only">Opportunity score</span><input type="number" min="0" max="100" value={value} onChange={(event)=>setValue(event.target.value)}/></label></p><button className="button primary" onClick={create}>Create alert</button></section>{rules.length ? <div className="alert-list">{rules.map((rule)=><article className="alert-card" key={rule.id}><span className={`status-dot ${rule.enabled?'enabled':'paused'}`} aria-label={rule.enabled?'Enabled':'Paused'} /><span className="asset-copy"><strong>{rule.scope_value ?? 'All assets'}</strong><small>Opportunity reaches {rule.numeric_value ?? rule.text_value}</small></span><button className="button tertiary" onClick={()=>api.setAlertEnabled(rule.id,!rule.enabled).then(load)}>{rule.enabled?'Pause':'Enable'}</button><button className="delete-button" aria-label={`Delete alert for ${rule.scope_value ?? 'all assets'}`} onClick={()=>api.deleteAlert(rule.id).then(load)}><Trash2 aria-hidden="true"/></button></article>)}</div> : <section className="surface premium-empty"><Bell aria-hidden="true"/><h2>No alerts yet</h2><p>Create a signal alert and Hunter will keep watch for you.</p></section>}</div>;
+  return <div className="page-enter markets-page"><header className="screen-header"><p className="eyebrow">ALERTS</p><h1>Stay informed, calmly</h1><p>Hunter sends a Telegram message only when your signal changes.</p></header><section className="surface alert-builder"><label>Bitcoin condition<select aria-label="Bitcoin alert condition" value={presetIndex} onChange={(event)=>setPresetIndex(Number(event.target.value))}>{presets.map((preset,index)=><option key={preset.label} value={index}>{preset.label}</option>)}</select></label><button className="button primary" onClick={create}>Create alert</button></section>{rules.length ? <div className="alert-list">{rules.map((rule)=><article className="alert-card" key={rule.id}><span className={`status-dot ${rule.enabled?'enabled':'paused'}`} aria-label={rule.enabled?'Enabled':'Paused'} /><span className="asset-copy"><strong>{rule.scope_value ?? 'All assets'}</strong><small>{describe(rule)}</small></span><button className="button tertiary" onClick={()=>api.setAlertEnabled(rule.id,!rule.enabled).then(load)}>{rule.enabled?'Pause':'Enable'}</button><button className="delete-button" aria-label={`Delete alert for ${rule.scope_value ?? 'all assets'}`} onClick={()=>api.deleteAlert(rule.id).then(load)}><Trash2 aria-hidden="true"/></button></article>)}</div> : <section className="surface premium-empty"><Bell aria-hidden="true"/><h2>No alerts yet</h2><p>Create a signal alert and Hunter will keep watch for you.</p></section>}</div>;
 }
 
 const FEATURES = [
+  { screen: 'opportunity' as Screen, title: 'Opportunity Cost', description: 'What if you invested instead?', icon: ReceiptText, tone: 'green' },
   { screen: 'dca' as Screen, title: 'DCA Calculator', description: 'Build a consistent investing plan', icon: TrendingUp, tone: 'blue' },
   { screen: 'compare' as Screen, title: 'Compare Assets', description: 'Compare long-term outcomes', icon: ArrowLeftRight, tone: 'indigo' },
   { screen: 'lump' as Screen, title: 'DCA vs Lump Sum', description: 'Compare two capital strategies', icon: WalletCards, tone: 'slate' },
@@ -736,6 +749,11 @@ function Home({ go }: { go: (screen: Screen) => void }) {
         <h1>Invest with a longer view.</h1>
         <p>Long-term investing intelligence.</p>
       </header>
+      <button className="bitcoin-home-card" onClick={() => go('bitcoin')}>
+        <span className="btc-mark">₿</span>
+        <span className="bitcoin-home-card-copy"><small>BITCOIN RESEARCH</small><strong>BTC Current State</strong><span>Bottom stages · Top stages · Raw indicators</span></span>
+        <ChevronRight aria-hidden="true" />
+      </button>
       <button className="temperature-hero" onClick={() => go('temperature')}>
         <span className="hero-icon"><ThermometerSun aria-hidden="true" /></span><span className="hero-kicker">MARKET TEMPERATURE</span>
         <strong>{signal ? `${signal.classification} · ${signal.trend}` : 'Conditions, made clear'}</strong>
@@ -759,8 +777,10 @@ function Home({ go }: { go: (screen: Screen) => void }) {
 
 const NAV_ITEMS = [
   { screen: 'home' as Screen, label: 'Home', icon: HomeIcon },
+  { screen: 'bitcoin' as Screen, label: 'Bitcoin', icon: LineChart },
   { screen: 'dca' as Screen, label: 'Calculate', icon: TrendingUp },
   { screen: 'compare' as Screen, label: 'Compare', icon: ArrowLeftRight },
+  { screen: 'opportunity' as Screen, label: 'What If', icon: ReceiptText },
   { screen: 'markets' as Screen, label: 'Markets', icon: BarChart3 },
   { screen: 'temperature' as Screen, label: 'Signals', icon: ThermometerSun },
   { screen: 'alerts' as Screen, label: 'Alerts', icon: Bell },
@@ -821,9 +841,11 @@ export function App() {
   if (loading) content = <LoadingState />;
   else if (error) content = <ErrorState message={error} retry={() => { setError(''); setResult(undefined); }} home={() => go('home')} />;
   else if (screen === 'home') content = <Home go={go} />;
+  else if (screen === 'bitcoin') content = <BitcoinOverview onHome={() => go('home')} />;
   else if (screen === 'markets') content = <Markets onHome={() => go('home')} />;
   else if (screen === 'temperature') content = <Temperature onHome={() => go('home')} />;
   else if (screen === 'alerts') content = <Alerts onHome={() => go('home')} />;
+  else if (screen === 'opportunity') content = <OpportunityCost assets={assets} />;
   else if (result && screen === 'compare') content = <CompareResults data={result as CompareResult} />;
   else if (result && screen === 'lump') content = <LumpResults result={result as LumpResult} />;
   else if (result) content = <DcaResults result={result as DcaResult} />;

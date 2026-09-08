@@ -52,8 +52,8 @@ LOGGER = logging.getLogger(__name__)
 ) = range(30, 37)
 LUMP_DATA_KEY = "lump_sum"
 LUMP_SERVICE_KEY = "dca_vs_lump_sum_service"
-COMPARE = "âœ… Compare"
-CANCEL = "âŒ Cancel"
+COMPARE = "✅ Compare"
+CANCEL = "❌ Cancel"
 
 
 def _flow(context: ContextTypes.DEFAULT_TYPE) -> dict[str, Any]:
@@ -124,7 +124,7 @@ async def lump_period(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
     flow["start_date"], flow["end_date"] = start, end
     keyboard = ReplyKeyboardMarkup((tuple(FREQUENCY_LABELS),), resize_keyboard=True)
     await update.effective_message.reply_text(
-        f"Period: {start.isoformat()} â†’ {end.isoformat()}\n\nChoose a frequency:",
+        f"Period: {start.isoformat()} → {end.isoformat()}\n\nChoose a frequency:",
         reply_markup=keyboard,
     )
     return LUMP_FREQUENCY
@@ -151,7 +151,7 @@ async def lump_start_date(
     if calendar:
         calendar["target"] = "end"
         await update.effective_message.reply_text(
-            f"âœ… Start date: {entered.isoformat()}\n\nChoose end date. "
+            f"✅ Start date: {entered.isoformat()}\n\nChoose end date. "
             "You can also type YYYY-MM-DD.",
             reply_markup=build_year_picker(today.year, max_date=today),
         )
@@ -225,7 +225,7 @@ async def lump_amount(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
     confirmation = (
         "Please confirm:\n\n"
         f"Asset:\n{flow['asset'].symbol}\n\n"
-        f"Period:\n{flow['start_date'].isoformat()} â†’ {flow['end_date'].isoformat()}\n\n"
+        f"Period:\n{flow['start_date'].isoformat()} → {flow['end_date'].isoformat()}\n\n"
         f"Frequency:\n{frequency.title()}\n\n"
         f"DCA:\n{format_currency(amount)} per {period}\n\n"
         f"Estimated total capital:\n{format_currency(estimated_capital)}\n\n"
@@ -320,7 +320,7 @@ async def cancel_lump_sum(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 async def menu_from_lump_sum(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     _clear(context)
     await update.effective_message.reply_text(
-        "Main menu â€” choose an option:", reply_markup=build_main_menu()
+        "Main menu — choose an option:", reply_markup=build_main_menu()
     )
     return ConversationHandler.END
 
