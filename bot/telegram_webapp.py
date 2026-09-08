@@ -25,6 +25,6 @@ async def configure_menu_button(application: Application) -> None:
     if mini_app_url:
         await application.bot.set_chat_menu_button(
             menu_button=MenuButtonWebApp(
-                text="Open DCA App", web_app=WebAppInfo(url=mini_app_url)
+                text="Open Hunter3", web_app=WebAppInfo(url=mini_app_url)
             )
         )

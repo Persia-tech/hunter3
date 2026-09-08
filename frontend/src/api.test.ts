@@ -24,6 +24,12 @@ describe('API base URL', () => {
     expect(fetchMock).toHaveBeenCalledWith('/api/assets', expect.any(Object));
   });
 
+  it('explains how to authenticate when opened outside Telegram', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 401, json: async () => ({ detail: 'Invalid Telegram session' }) }));
+    const api = await loadApi('');
+    await expect(api.assets()).rejects.toThrow('Open this Mini App from Telegram to continue.');
+  });
+
   it('uses an absolute API URL when VITE_API_BASE_URL is configured', async () => {
     const fetchMock = vi.fn().mockResolvedValue(response);
     vi.stubGlobal('fetch', fetchMock);

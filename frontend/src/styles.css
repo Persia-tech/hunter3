@@ -171,7 +171,6 @@ p { line-height: 1.5; }
 .comparison-top > i { color: var(--text-tertiary); font-size: 10px; font-style: normal; }
 .comparison-top strong { font-size: 13px; }
 .comparison-top em { margin-left: auto; color: var(--positive); font-size: 9px; font-style: normal; text-transform: uppercase; }
-.opportunity-asset-mark { display: grid; width: 25px; height: 25px; place-items: center; border-radius: 8px; background: var(--surface-soft); color: var(--text-secondary); font-size: 10px; font-weight: 700; }
 .comparison-card > b { margin-top: 3px; font-size: 19px; letter-spacing: -.025em; }
 .comparison-return { color: var(--positive); font-size: 12px; font-weight: 640; }
 .comparison-card > small { max-width: 100%; overflow: hidden; color: var(--text-secondary); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
@@ -431,7 +430,7 @@ svg { width: 20px; height: 20px; stroke-width: 1.8; }
   right: 0;
   bottom: 0;
   left: 0;
-  padding: 0 var(--space-3) calc(var(--space-2) + env(safe-area-inset-bottom));
+  padding: 0 6px calc(6px + env(safe-area-inset-bottom));
   pointer-events: none;
 }
 
@@ -439,11 +438,12 @@ svg { width: 20px; height: 20px; stroke-width: 1.8; }
   display: flex;
   width: min(100%, 500px);
   margin: 0 auto;
-  padding: 5px;
+  gap: 2px;
+  padding: 4px;
   border: 1px solid color-mix(in srgb, var(--border-strong) 80%, transparent);
-  border-radius: 22px;
-  background: color-mix(in srgb, var(--surface-raised) 90%, transparent);
-  box-shadow: 0 10px 36px rgba(20, 25, 35, 0.13);
+  border-radius: 21px;
+  background: color-mix(in srgb, var(--surface-raised) 92%, transparent);
+  box-shadow: 0 10px 36px rgba(20, 25, 35, 0.12), 0 1px 0 rgba(255,255,255,.5) inset;
   backdrop-filter: saturate(150%) blur(18px);
   pointer-events: auto;
 }
@@ -454,24 +454,37 @@ svg { width: 20px; height: 20px; stroke-width: 1.8; }
   min-width: 0;
   min-height: 56px;
   flex: 1;
+  overflow: hidden;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 3px;
+  gap: 2px;
   border: 0;
-  border-radius: 17px;
+  border-radius: 15px;
   background: transparent;
   color: var(--text-tertiary);
-  font-size: 10px;
-  font-weight: 590;
-  transition: color 180ms ease, background 180ms ease, transform 180ms ease;
+  font-size: clamp(7.5px, 2.25vw, 10px);
+  font-weight: 520;
+  letter-spacing: -.01em;
+  white-space: nowrap;
+  transition: color 180ms ease, background-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
 }
 
 .nav-inner button:active { transform: scale(0.96); }
-.nav-inner button.selected { background: var(--accent-soft); color: var(--accent); }
+.nav-inner button.selected { background: color-mix(in srgb, var(--accent-soft) 86%, var(--surface-raised)); color: var(--accent); box-shadow: 0 2px 10px color-mix(in srgb, var(--accent) 12%, transparent), 0 0 0 1px color-mix(in srgb, var(--accent) 9%, transparent) inset; font-weight: 680; }
 .nav-icon { display: grid; place-items: center; height: 24px; }
-.nav-icon svg { width: 21px; height: 21px; transition: transform 200ms ease; }
+.nav-icon svg { width: 20px; height: 20px; transition: transform 180ms ease, stroke-width 180ms ease; }
 .nav-inner button.selected .nav-icon svg { transform: translateY(-1px); stroke-width: 2.2; }
+
+@media (max-width: 390px) {
+  .nav-inner { gap: 0; padding-inline: 3px; }
+  .nav-inner button { min-height: 55px; border-radius: 14px; font-size: 7.5px; }
+  .nav-icon svg { width: 19px; height: 19px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nav-inner button, .nav-icon svg { transition: none; }
+}
 
 /* Shared controls */
 .button {
@@ -578,11 +591,15 @@ svg { width: 20px; height: 20px; stroke-width: 1.8; }
 .asset-row:active { transform: scale(0.986); }
 .asset-row.selected { border-color: var(--accent-border); background: color-mix(in srgb, var(--accent-soft) 56%, var(--surface-raised)); }
 .asset-row:disabled { opacity: 0.45; }
-.asset-monogram { display: grid; width: 44px; height: 44px; place-items: center; flex: 0 0 auto; border: 1px solid var(--border); border-radius: 14px; background: var(--surface-soft); color: var(--text-secondary); font-size: 17px; font-weight: 680; letter-spacing: -0.02em; }
-.asset-monogram.grid { font-size: 21px; font-weight: 540; }
-.asset-monogram.metal { font-family: ui-serif, Georgia, serif; font-size: 15px; font-weight: 650; letter-spacing: -0.04em; }
-.asset-row.selected .asset-monogram { background: var(--accent-soft); color: var(--accent); }
-.asset-monogram.large { width: 54px; height: 54px; margin-bottom: var(--space-4); border-radius: 17px; background: var(--accent-soft); color: var(--accent); font-size: 14px; }
+.asset-badge { display: grid; width: 44px; height: 44px; place-items: center; flex: 0 0 auto; border: 1px solid color-mix(in srgb,var(--border-strong) 75%,transparent); border-radius: 14px; background: var(--surface-soft); color: var(--text-secondary); box-shadow: 0 1px 1px rgba(20,25,35,.04), inset 0 1px rgba(255,255,255,.45); font-size: 17px; font-weight: 720; letter-spacing: -.035em; }
+.asset-badge svg { width: 21px; height: 21px; fill: currentColor; }
+.asset-badge--crypto { background: color-mix(in srgb,#c99538 10%,var(--surface-raised)); color: color-mix(in srgb,#9a691c 78%,var(--text)); }
+.asset-badge--etf { background: color-mix(in srgb,var(--accent) 8%,var(--surface-raised)); color: color-mix(in srgb,var(--accent) 75%,var(--text)); }
+.asset-badge--metal { background: color-mix(in srgb,#9c8660 9%,var(--surface-raised)); color: color-mix(in srgb,#756345 72%,var(--text)); font-family: ui-serif,Georgia,serif; font-size: 14px; }
+.asset-row.selected .asset-badge { border-color: var(--accent-border); box-shadow: 0 4px 14px color-mix(in srgb,var(--accent) 10%,transparent); }
+.asset-badge--large { width: 54px; height: 54px; margin-bottom: var(--space-4); border-radius: 17px; }
+.asset-badge--compact { width: 25px; height: 25px; border-radius: 8px; font-size: 10px; }
+.asset-badge--compact svg { width: 13px; height: 13px; }
 .asset-copy { display: flex; min-width: 0; flex-direction: column; gap: 3px; }
 .asset-copy strong { font-size: 15px; font-weight: 650; }
 .asset-copy small { overflow: hidden; color: var(--text-secondary); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }

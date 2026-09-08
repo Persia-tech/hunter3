@@ -233,7 +233,7 @@ def require_telegram_user(
             status_code=(
                 status.HTTP_401_UNAUTHORIZED
             ),
-            detail="Invalid Telegram session",
+            detail=("Open this Mini App from Telegram to continue" if not init_data else "Invalid or expired Telegram session"),
         )
 
     return user_id

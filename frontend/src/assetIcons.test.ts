@@ -5,12 +5,18 @@ describe('asset icon mapping', () => {
   it('uses the Bitcoin currency symbol', () => expect(getAssetIcon('BTC').mark).toBe('₿'));
 
   it.each([
-    ['AAPL', 'A'], ['MSFT', '⊞'], ['GOOGL', 'G'], ['SPY', 'S'], ['QQQ', 'Q'],
+    ['AAPL', 'A'], ['MSFT', 'M'], ['GOOGL', 'G'], ['SPY', 'S'], ['QQQ', 'Q'],
     ['GLD', 'Au'], ['SLV', 'Ag'], ['PPLT', 'Pt'],
   ])('maps %s to %s', (symbol, mark) => expect(getAssetIcon(symbol).mark).toBe(mark));
 
   it('falls back to a normalized first letter', () => {
-    expect(getAssetIcon(' xyz ')).toEqual({ mark: 'X' });
-    expect(getAssetIcon('')).toEqual({ mark: '?' });
+    expect(getAssetIcon(' xyz ')).toEqual({ mark: 'X', kind: 'stock' });
+    expect(getAssetIcon('')).toEqual({ mark: '?', kind: 'stock' });
+  });
+
+  it('uses restrained category identities for generated badges', () => {
+    expect(getAssetIcon('ETH', 'crypto').kind).toBe('crypto');
+    expect(getAssetIcon('FUND', 'etf').kind).toBe('etf');
+    expect(getAssetIcon('GOLD', 'precious_metal_etf').kind).toBe('metal');
   });
 });
