@@ -18,3 +18,32 @@
 4. Open the Mini App from Telegram and confirm assets, prices, Market Temperature, Bitcoin Overview, and alert CRUD load.
 5. Run `python scripts/smoke_test.py --base-url https://YOUR-API --init-data 'VALID_TELEGRAM_INIT_DATA'` from a secure shell. Init data is short-lived; do not save it in source control or logs.
 6. Confirm the scheduled market refresh runs and a test user's alert is delivered once on entry, then can be paused and deleted.
+
+## Multi-user Mini App access
+
+There is no owner allowlist: every user is authenticated from the `user.id` in
+Telegram's signed Web App `initData`. If one account works and another does not,
+check the launch/configuration path rather than weakening authentication:
+
+1. Set the **same** `TELEGRAM_BOT_TOKEN` on the bot and backend Railway services.
+   Init data signed for a different bot token cannot validate.
+2. Set the bot service's `MINI_APP_URL` to the current frontend HTTPS URL, and
+   set the frontend's `VITE_API_BASE_URL` to the current backend HTTPS origin.
+3. Set backend `MINI_APP_ORIGINS` to the exact frontend origin (scheme and host,
+   no trailing path). Include every real preview/production frontend origin that
+   should call the API.
+4. In BotFather, use `/setmenubutton` for this bot (or restart the bot so its
+   global menu-button setup runs) and select the same `MINI_APP_URL`. Do not share
+   the raw Railway URL as the primary opening flow: an ordinary browser tab has
+   no Telegram `initData`.
+5. Have each user open the bot chat and press **Start** once, then launch
+   **Open Hunter3** from the reply keyboard or persistent menu. Telegram bots
+   cannot initiate a conversation with a user, while either Web App button
+   supplies that user's independently signed `initData`.
+6. Close and reopen the Mini App when a session is more than one hour old. Stale
+   init data is deliberately rejected; it must not be cached or copied between
+   users.
+
+Never enable `LOCAL_DEV_AUTH_BYPASS` to solve a Telegram launch problem. For a
+browser-only visual preview, enable it only on an explicitly non-production
+backend deployment; production startup rejects it.

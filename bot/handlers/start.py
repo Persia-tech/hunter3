@@ -16,7 +16,7 @@ def build_start_menu(app_url: str | None) -> ReplyKeyboardMarkup:
     if not valid_url:
         return menu
     return ReplyKeyboardMarkup(
-        [[KeyboardButton("Open DCA App", web_app=WebAppInfo(url=valid_url))], *menu.keyboard],
+        [[KeyboardButton("Open Hunter3", web_app=WebAppInfo(url=valid_url))], *menu.keyboard],
         resize_keyboard=True,
         is_persistent=True,
         input_field_placeholder="Choose an option",

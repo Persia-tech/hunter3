@@ -88,7 +88,7 @@ it('ignores old scenario storage and starts with an empty BTC scenario', () => {
   localStorage.setItem('hunter3.opportunity-custom-purchases.v1', JSON.stringify([{ id: 'custom:old', name: 'Old TV' }]));
   localStorage.setItem('hunter3.opportunity-assets.v1', JSON.stringify(['NVDA', 'SPY']));
   render(<OpportunityCost assets={assets}/>);
-  expect(screen.getByText('Start with something you bought')).toBeInTheDocument();
+  expect(screen.getByText('Select purchases')).toBeInTheDocument();
   expect(screen.queryByText('Old TV')).not.toBeInTheDocument();
   addCustom('Fresh purchase');
   expect(screen.getByRole('button', { name: 'Remove BTC' })).toBeInTheDocument();
@@ -115,7 +115,7 @@ it('progressively discloses content and Start over resets the complete scenario'
   fireEvent.click(screen.getByRole('button', { name: 'Show all 7 assets' }));
   expect(screen.getByText('R6')).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Start over' }));
-  expect(screen.getByText('Start with something you bought')).toBeInTheDocument();
+  expect(screen.getByText('Select purchases')).toBeInTheDocument();
   addCustom('After reset');
   expect(screen.getByRole('button', { name: 'Remove BTC' })).toBeInTheDocument();
   expect(screen.queryByText('Best selected alternative')).not.toBeInTheDocument();
