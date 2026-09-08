@@ -25,6 +25,43 @@ def test_signed_user_is_extracted_only_after_validation():
     assert get_telegram_user_id(data.replace("42", "99"), TOKEN) is None
 
 
+def test_two_different_signed_users_authenticate_independently():
+    user_a = signed_data(user_id=101)
+    user_b = signed_data(user_id=202)
+    assert get_telegram_user_id(user_a, TOKEN) == "101"
+    assert get_telegram_user_id(user_b, TOKEN) == "202"
+    assert user_a != user_b
+
+
+def test_opportunity_catalog_accepts_every_valid_telegram_user(monkeypatch):
+    from fastapi.testclient import TestClient
+    from backend.app.api.dca import create_app
+
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", TOKEN)
+    monkeypatch.delenv("LOCAL_DEV_AUTH_BYPASS", raising=False)
+    client = TestClient(create_app())
+    for user_id in (101, 202):
+        response = client.get(
+            "/api/opportunity-cost/products",
+            headers={"X-Telegram-Init-Data": signed_data(user_id=user_id)},
+        )
+        assert response.status_code == 200
+        assert response.json()["products"]
+
+
+def test_opportunity_catalog_rejects_invalid_and_stale_sessions(monkeypatch):
+    from fastapi.testclient import TestClient
+    from backend.app.api.dca import create_app
+
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", TOKEN)
+    monkeypatch.delenv("LOCAL_DEV_AUTH_BYPASS", raising=False)
+    client = TestClient(create_app())
+    invalid = signed_data(user_id=101).replace("101", "202")
+    stale = signed_data(user_id=101, auth_date=int(time.time()) - 3601)
+    assert client.get("/api/opportunity-cost/products", headers={"X-Telegram-Init-Data": invalid}).status_code == 401
+    assert client.get("/api/opportunity-cost/products", headers={"X-Telegram-Init-Data": stale}).status_code == 401
+
+
 def test_stale_future_and_duplicate_payloads_are_rejected():
     assert not validate_init_data(signed_data(auth_date=int(time.time()) - 3601), TOKEN)
     assert not validate_init_data(signed_data(auth_date=int(time.time()) + 31), TOKEN)
