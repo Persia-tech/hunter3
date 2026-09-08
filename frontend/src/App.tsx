@@ -35,7 +35,7 @@ import {
 } from 'recharts';
 
 import { api } from './api';
-import { AssetBadge } from './AssetBadge';
+import { getAssetIcon } from './assetIcons';
 import { BitcoinOverview } from './BitcoinOverview';
 import { OpportunityCost } from './OpportunityCost';
 import { money, percent, quantity } from './format';
@@ -69,7 +69,12 @@ const FREQUENCIES = ['daily', 'weekly', 'monthly'];
 const AMOUNTS = ['10', '25', '50', '100'];
 
 function AssetMark({ symbol, large = false }: { symbol: string; large?: boolean }) {
-  return <AssetBadge symbol={symbol} size={large ? 'large' : 'regular'} />;
+  const icon = getAssetIcon(symbol);
+  return (
+    <span className={`asset-monogram ${large ? 'large ' : ''}${icon.kind ?? ''}`.trim()} aria-hidden="true">
+      {icon.mark}
+    </span>
+  );
 }
 
 function ErrorState({
@@ -775,7 +780,7 @@ const NAV_ITEMS = [
   { screen: 'bitcoin' as Screen, label: 'Bitcoin', icon: LineChart },
   { screen: 'dca' as Screen, label: 'Calculate', icon: TrendingUp },
   { screen: 'compare' as Screen, label: 'Compare', icon: ArrowLeftRight },
-  { screen: 'opportunity' as Screen, label: 'What If', icon: ReceiptText },
+  { screen: 'opportunity' as Screen, label: 'Opportunity', icon: ReceiptText },
   { screen: 'markets' as Screen, label: 'Markets', icon: BarChart3 },
   { screen: 'temperature' as Screen, label: 'Signals', icon: ThermometerSun },
   { screen: 'alerts' as Screen, label: 'Alerts', icon: Bell },
