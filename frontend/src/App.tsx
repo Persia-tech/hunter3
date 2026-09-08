@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   AlertCircle,
+  Activity,
   ArrowLeftRight,
   BarChart3,
   Bell,
@@ -103,15 +104,23 @@ function ErrorState({
   );
 }
 
-function LoadingState() {
+function LoadingState({
+  eyebrow = 'ANALYZING HISTORY',
+  title = 'Calculating your strategy…',
+  description = 'Retrieving completed market data and building your result.',
+}: {
+  eyebrow?: string;
+  title?: string;
+  description?: string;
+} = {}) {
   return (
     <section className="loading-view" aria-live="polite" aria-busy="true">
       <span className="loading-mark">
         <LoaderCircle aria-hidden="true" />
       </span>
-      <p className="eyebrow">ANALYZING HISTORY</p>
-      <h1>Calculating your strategy…</h1>
-      <p>Retrieving completed market data and building your result.</p>
+      <p className="eyebrow">{eyebrow}</p>
+      <h1>{title}</h1>
+      <p>{description}</p>
       <div className="result-skeleton" aria-hidden="true">
         <i className="skeleton skeleton-wide" />
         <div>
@@ -675,9 +684,9 @@ function Markets({ onHome }: { onHome: () => void }) {
           <RefreshCw className={refreshing ? 'spinning' : ''} aria-hidden="true" />
         </button>
       </header>
-      {!data ? <LoadingState /> : (
+      {!data ? <LoadingState eyebrow="UPDATING MARKETS" title="Loading current prices…" description="Preparing the latest completed market snapshot." /> : (
         <>
-          <div className="market-list">
+          {data.prices.length > 0 ? <div className="market-list" aria-label="Current market prices">
             {data.prices.map((price) => (
               <article className="market-row" key={price.symbol}>
                 <AssetMark symbol={price.symbol} />
@@ -685,7 +694,8 @@ function Markets({ onHome }: { onHome: () => void }) {
                 <strong>{money(price.price)}</strong>
               </article>
             ))}
-          </div>
+          </div> : <section className="surface premium-empty"><BarChart3 aria-hidden="true"/><h2>No prices available</h2><p>The next completed market snapshot will appear here automatically.</p><button className="button secondary" onClick={load}>Refresh prices</button></section>}
+          {data.unavailable.length > 0 && <section className="market-notice" role="status"><AlertCircle aria-hidden="true"/><span><strong>Some prices are still updating</strong><small>{data.unavailable.join(' · ')}</small></span></section>}
           <p className="data-note"><Check aria-hidden="true" /> Snapshot {new Date(data.fetched_at).toLocaleString()}</p>
         </>
       )}
@@ -698,8 +708,8 @@ function Temperature({ onHome }: { onHome: () => void }) {
   const [error, setError] = useState('');
   useEffect(() => { api.temperatures().then(setData).catch((reason) => setError(reason.message)); }, []);
   if (error) return <ErrorState message={error} home={onHome} />;
-  if (!data) return <LoadingState />;
-  return <div className="page-enter markets-page"><header className="screen-header"><p className="eyebrow">MARKET TEMPERATURE</p><h1>Long-term conditions</h1><p>Three distinct signals, designed for patient decisions.</p></header><div className="temperature-list">{data.map((item) => <article className="temperature-card" key={item.symbol}><div className="temperature-heading"><AssetMark symbol={item.symbol}/><span className="asset-copy"><strong>{item.symbol}</strong><small>{item.name}</small></span><span className="classification">{item.classification}</span></div><div className="temperature-scores"><span className="opportunity"><small>Opportunity</small><strong>{item.opportunity_score}<em>/100</em></strong></span><span className="overheat"><small>Overheat</small><strong>{item.overheat_score}<em>/100</em></strong></span></div><div className="signal-summary"><span><small>Drawdown zone</small><strong>{item.drawdown_percent.toFixed(1)}%</strong></span><span><small>Trend</small><strong>{item.trend}</strong></span></div><details><summary>Technical details</summary><div className="technical-grid"><span>Weekly RSI <strong>{item.weekly_rsi?.toFixed(1) ?? '—'}</strong></span><span>Stochastic RSI <strong>{item.stochastic_rsi?.toFixed(1) ?? '—'}</strong></span><span>200W distance <strong>{item.distance_200w_percent?.toFixed(1) ?? '—'}%</strong></span><span>12M momentum <strong>{item.momentum_12m == null ? '—' : percent(String(item.momentum_12m * 100))}</strong></span><span>Divergence <strong>{item.divergence}</strong></span><span>Recovery <strong>{item.recovery_signal ? 'Detected' : 'Not detected'}</strong></span></div></details><p className="freshness">Updated {new Date(item.as_of).toLocaleString()} · {item.history_status} history</p></article>)}</div>{!data.length && <section className="surface premium-empty"><ThermometerSun aria-hidden="true"/><h2>No market snapshot yet</h2><p>Signals will appear after the next market update.</p><button className="button secondary" onClick={onHome}>Return home</button></section>}</div>;
+  if (!data) return <LoadingState eyebrow="READING SIGNALS" title="Assessing market conditions…" description="Organizing opportunity, heat, trend, and recovery signals." />;
+  return <div className="page-enter markets-page"><header className="screen-header"><p className="eyebrow">SIGNALS</p><h1>Long-term conditions</h1><p>Opportunity, heat, and trend—clearly separated for patient decisions.</p></header><div className="temperature-list">{data.map((item) => { const tone = item.overheat_score >= 60 ? 'warning' : item.opportunity_score >= 60 ? 'opportunity' : item.recovery_signal ? 'recovery' : 'neutral'; return <article className={`temperature-card signal-${tone}`} key={item.symbol}><div className="temperature-heading"><AssetMark symbol={item.symbol}/><span className="asset-copy"><strong>{item.symbol}</strong><small>{item.name}</small></span><span className={`classification ${tone}`}><Activity aria-hidden="true"/>{item.classification}</span></div><div className="temperature-scores"><span className="opportunity"><small>Opportunity</small><strong>{item.opportunity_score}<em>/100</em></strong></span><span className="overheat"><small>Overheat</small><strong>{item.overheat_score}<em>/100</em></strong></span></div><div className="signal-summary"><span><small>Drawdown zone</small><strong>{item.drawdown_percent.toFixed(1)}%</strong></span><span><small>Trend</small><strong>{item.trend}</strong></span></div>{item.recovery_signal && <p className="signal-callout"><TrendingUp aria-hidden="true"/><span><strong>Recovery detected</strong>Momentum confirms improving conditions.</span></p>}<details><summary>Technical details</summary><div className="technical-grid"><span>Weekly RSI <strong>{item.weekly_rsi?.toFixed(1) ?? '—'}</strong></span><span>Stochastic RSI <strong>{item.stochastic_rsi?.toFixed(1) ?? '—'}</strong></span><span>200W distance <strong>{item.distance_200w_percent?.toFixed(1) ?? '—'}%</strong></span><span>12M momentum <strong>{item.momentum_12m == null ? '—' : percent(String(item.momentum_12m * 100))}</strong></span><span>Divergence <strong>{item.divergence}</strong></span><span>Recovery <strong>{item.recovery_signal ? 'Detected' : 'Not detected'}</strong></span></div></details><p className="freshness">Updated {new Date(item.as_of).toLocaleString()} · {item.history_status} history</p></article>})}</div>{!data.length && <section className="surface premium-empty"><ThermometerSun aria-hidden="true"/><h2>No market snapshot yet</h2><p>Signals will appear after the next market update.</p><button className="button secondary" onClick={onHome}>Return home</button></section>}</div>;
 }
 
 function Alerts({ onHome }: { onHome: () => void }) {
@@ -715,15 +725,16 @@ function Alerts({ onHome }: { onHome: () => void }) {
   const [rules, setRules] = useState<AlertRule[]>();
   const [error, setError] = useState('');
   const [presetIndex, setPresetIndex] = useState(2);
+  const [saving, setSaving] = useState(false);
   const load = useCallback(() => api.alerts().then(setRules).catch((reason) => setError(reason.message)), []);
   useEffect(() => {
     void load();
   }, [load]);
-  const create = () => { const preset=presets[presetIndex]; return api.createAlert({scope_type:'symbol',scope_value:'BTC-USD',metric:preset.metric,operator:preset.operator,numeric_value:preset.value,notify_on_enter:true,notify_on_exit:false,cooldown_minutes:60,delivery_channel:'telegram'}).then(load).catch((reason) => setError(reason.message)); };
+  const create = () => { const preset=presets[presetIndex]; setSaving(true); return api.createAlert({scope_type:'symbol',scope_value:'BTC-USD',metric:preset.metric,operator:preset.operator,numeric_value:preset.value,notify_on_enter:true,notify_on_exit:false,cooldown_minutes:60,delivery_channel:'telegram'}).then(load).catch((reason) => setError(reason.message)).finally(()=>setSaving(false)); };
   const describe = (rule: AlertRule) => presets.find((preset) => preset.metric===rule.metric && preset.operator===rule.operator && preset.value===rule.numeric_value)?.label ?? `${rule.metric} ${rule.operator} ${rule.numeric_value ?? rule.text_value}`;
   if (error) return <ErrorState message={error} retry={() => {setError('');load();}} home={onHome}/>;
-  if (!rules) return <LoadingState/>;
-  return <div className="page-enter markets-page"><header className="screen-header"><p className="eyebrow">ALERTS</p><h1>Stay informed, calmly</h1><p>Hunter sends a Telegram message only when your signal changes.</p></header><section className="surface alert-builder"><label>Bitcoin condition<select aria-label="Bitcoin alert condition" value={presetIndex} onChange={(event)=>setPresetIndex(Number(event.target.value))}>{presets.map((preset,index)=><option key={preset.label} value={index}>{preset.label}</option>)}</select></label><button className="button primary" onClick={create}>Create alert</button></section>{rules.length ? <div className="alert-list">{rules.map((rule)=><article className="alert-card" key={rule.id}><span className={`status-dot ${rule.enabled?'enabled':'paused'}`} aria-label={rule.enabled?'Enabled':'Paused'} /><span className="asset-copy"><strong>{rule.scope_value ?? 'All assets'}</strong><small>{describe(rule)}</small></span><button className="button tertiary" onClick={()=>api.setAlertEnabled(rule.id,!rule.enabled).then(load)}>{rule.enabled?'Pause':'Enable'}</button><button className="delete-button" aria-label={`Delete alert for ${rule.scope_value ?? 'all assets'}`} onClick={()=>api.deleteAlert(rule.id).then(load)}><Trash2 aria-hidden="true"/></button></article>)}</div> : <section className="surface premium-empty"><Bell aria-hidden="true"/><h2>No alerts yet</h2><p>Create a signal alert and Hunter will keep watch for you.</p></section>}</div>;
+  if (!rules) return <LoadingState eyebrow="SYNCING ALERTS" title="Loading your alerts…" description="Checking the signals Hunter is watching for you."/>;
+  return <div className="page-enter markets-page"><header className="screen-header"><p className="eyebrow">ALERTS</p><h1>Stay informed, calmly</h1><p>Hunter sends a Telegram message only when your signal changes.</p></header><section className="surface alert-builder"><div className="alert-builder-heading"><span><Bell aria-hidden="true"/></span><div><h2>Create an alert</h2><p>Choose a plain-language Bitcoin condition.</p></div></div><label>Notify me when<select aria-label="Bitcoin alert condition" value={presetIndex} onChange={(event)=>setPresetIndex(Number(event.target.value))}>{presets.map((preset,index)=><option key={preset.label} value={index}>{preset.label}</option>)}</select></label><button className="button primary" onClick={create} disabled={saving}>{saving?<><LoaderCircle className="spinning" aria-hidden="true"/>Creating…</>:'Create alert'}</button></section>{rules.length ? <><div className="section-label"><span>YOUR ALERTS</span><small>{rules.length} {rules.length===1?'condition':'conditions'}</small></div><div className="alert-list">{rules.map((rule)=><article className="alert-card" key={rule.id}><AssetMark symbol={rule.scope_value?.replace('-USD','') ?? '?'}/><span className="asset-copy"><strong>{rule.scope_value?.replace('-USD','') ?? 'All assets'} <em className={`status-pill ${rule.enabled?'enabled':'paused'}`}>{rule.enabled?'Active':'Paused'}</em></strong><small>{describe(rule)}</small></span><button className="button tertiary" aria-label={`${rule.enabled?'Pause':'Enable'} alert: ${describe(rule)}`} onClick={()=>api.setAlertEnabled(rule.id,!rule.enabled).then(load)}>{rule.enabled?'Pause':'Enable'}</button><button className="delete-button" aria-label={`Delete alert for ${rule.scope_value ?? 'all assets'}`} onClick={()=>api.deleteAlert(rule.id).then(load)}><Trash2 aria-hidden="true"/></button></article>)}</div></> : <section className="surface premium-empty"><Bell aria-hidden="true"/><h2>No alerts yet</h2><p>Choose a condition above and Hunter will keep watch for you.</p></section>}</div>;
 }
 
 const FEATURES = [
