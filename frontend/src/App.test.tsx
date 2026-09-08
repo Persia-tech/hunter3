@@ -154,5 +154,7 @@ describe('Hunter3 additions', () => {
     fireEvent.click(await screen.findByRole('button', {name: /Market Temperature/i}));
     expect(await screen.findByText('Strong Opportunity')).toBeInTheDocument();
     expect(screen.getByText('-33.3%')).toBeInTheDocument();
+    expect(screen.getByText('Recovery detected')).toBeInTheDocument();
+    expect(screen.getByText('Momentum confirms improving conditions.')).toBeInTheDocument();
   });
 });
