@@ -16,7 +16,7 @@ PERIOD_PRESETS = (
     "Since 2020",
     "Max Available",
 )
-CUSTOM_DATES = "ðŸ“… Custom Dates"
+CUSTOM_DATES = "📅 Custom Dates"
 CALENDAR_DATA_KEY = "calendar"
 
 
@@ -29,7 +29,7 @@ class CalendarAction:
 
 def build_period_keyboard() -> ReplyKeyboardMarkup:
     rows = [PERIOD_PRESETS[index : index + 2] for index in range(0, 6, 2)]
-    rows.append((CUSTOM_DATES, "âŒ Cancel"))
+    rows.append((CUSTOM_DATES, "❌ Cancel"))
     return ReplyKeyboardMarkup(tuple(rows), resize_keyboard=True, one_time_keyboard=True)
 
 
@@ -50,9 +50,9 @@ def build_month_calendar(year: int, month: int, *, max_date: date) -> InlineKeyb
     rows: list[list[InlineKeyboardButton]] = [
         [InlineKeyboardButton(f"{month_name[month]} {year}", callback_data=f"cal:years:{year}")],
         [
-            InlineKeyboardButton("â€¹", callback_data=previous_callback),
+            InlineKeyboardButton("‹", callback_data=previous_callback),
             InlineKeyboardButton("Choose month", callback_data=f"cal:months:{year}"),
-            InlineKeyboardButton("â€º", callback_data=next_callback),
+            InlineKeyboardButton("›", callback_data=next_callback),
         ],
         [
             InlineKeyboardButton(day, callback_data="cal:noop")
@@ -84,12 +84,12 @@ def build_year_picker(anchor_year: int, *, max_date: date) -> InlineKeyboardMark
         ],
         [
             InlineKeyboardButton(
-                "Â« Older",
+                "« Older",
                 callback_data=(
                     f"cal:older:{years[-1] - 1}" if years[-1] > 1 else "cal:noop"
                 ),
             ),
-            InlineKeyboardButton("Newer Â»", callback_data=f"cal:newer:{years[0] + 8}"),
+            InlineKeyboardButton("Newer »", callback_data=f"cal:newer:{years[0] + 8}"),
         ],
         _footer(),
     ]
@@ -149,8 +149,8 @@ def preset_date_range(label: str, *, today: date) -> tuple[date, date]:
 
 def _footer() -> list[InlineKeyboardButton]:
     return [
-        InlineKeyboardButton("â¬…ï¸ Back", callback_data="cal:back"),
-        InlineKeyboardButton("âŒ Cancel", callback_data="cal:cancel"),
+        InlineKeyboardButton("⬅️ Back", callback_data="cal:back"),
+        InlineKeyboardButton("❌ Cancel", callback_data="cal:cancel"),
     ]
 
 

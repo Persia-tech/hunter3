@@ -51,7 +51,7 @@ class ChartService:
             price_axis.set_xlabel("Purchase execution date")
             price_axis.grid(alpha=0.25)
             figure.suptitle(
-                f"{result.asset.symbol} DCA â€” {result.start_date:%b %Y} to "
+                f"{result.asset.symbol} DCA — {result.start_date:%b %Y} to "
                 f"{result.end_date:%b %Y}"
             )
             figure.autofmt_xdate()
@@ -80,7 +80,7 @@ class ChartService:
             axis.invert_yaxis()
             axis.axvline(0, color="black", linewidth=0.8)
             axis.set_xlabel("Total return (%)")
-            axis.set_title("Return by asset â€” same DCA strategy applied independently")
+            axis.set_title("Return by asset — same DCA strategy applied independently")
             axis.grid(axis="x", alpha=0.25)
             return _render(figure)
         except Exception as exc:

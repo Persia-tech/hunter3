@@ -36,7 +36,7 @@ async def show_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     del context
     if update.effective_message:
         await update.effective_message.reply_text(
-            "Main menu â€” choose an option:", reply_markup=build_main_menu()
+            "Main menu — choose an option:", reply_markup=build_main_menu()
         )
 
 

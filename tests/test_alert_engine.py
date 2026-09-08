@@ -45,3 +45,27 @@ def test_crossing_transition_cooldown_and_state_update():
 ])
 def test_text_operators(operator, previous, current, target, matched):
     assert evaluate_rule(rule(operator, numeric=None, text=target), state(last_text_value=previous), current).matched is matched
+
+@pytest.mark.parametrize(("metric", "operator", "threshold", "outside", "inside"), [
+    ("bitcoin_quantile_percentile", "below_or_equal", 10, 11, 10),
+    ("bitcoin_mvrv_percentile", "below_or_equal", 20, 21, 20),
+    ("opportunity_score", "above_or_equal", 60, 59, 60),
+    ("bitcoin_mvrv_percentile", "above_or_equal", 90, 89, 90),
+    ("bitcoin_top_stage2_active", "equal", 1, False, True),
+    ("bitcoin_below_200d_ma", "equal", 1, False, True),
+    ("bitcoin_below_200w_ma", "equal", 1, False, True),
+])
+def test_bitcoin_alert_conditions_notify_once_on_entry(metric, operator, threshold, outside, inside):
+    current_rule = rule(operator, numeric=threshold, metric=metric, notify_on_exit=False)
+    current_state = state()
+
+    initial = evaluate_rule(current_rule, current_state, outside)
+    apply_evaluation_to_state(current_state, initial)
+    assert not initial.should_notify
+
+    entered = evaluate_rule(current_rule, current_state, inside)
+    apply_evaluation_to_state(current_state, entered, notified=entered.should_notify)
+    assert entered.entered and entered.should_notify
+
+    duplicate = evaluate_rule(current_rule, current_state, inside)
+    assert duplicate.matched and not duplicate.entered and not duplicate.should_notify

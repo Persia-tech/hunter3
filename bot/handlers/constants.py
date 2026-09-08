@@ -1,10 +1,10 @@
 """Shared Telegram button labels and user-facing Stage 4 messages."""
 
-CALCULATE_DCA = "ðŸ“Š Calculate DCA"
-COMPARE_ASSETS = "âš–ï¸ Compare Assets"
-DCA_VS_LUMP_SUM = "ðŸ’° DCA vs Lump Sum"
-CURRENT_PRICES = "ðŸ“ˆ Current Prices"
-HELP = "â„¹ï¸ Help"
+CALCULATE_DCA = "📊 Calculate DCA"
+COMPARE_ASSETS = "⚖️ Compare Assets"
+DCA_VS_LUMP_SUM = "💰 DCA vs Lump Sum"
+CURRENT_PRICES = "📈 Current Prices"
+HELP = "ℹ️ Help"
 
 MAIN_MENU_BUTTONS = (
     CALCULATE_DCA,
@@ -22,11 +22,11 @@ WELCOME_TEXT = (
 )
 
 HELP_TEXT = (
-    "â„¹ï¸ Help\n\n"
-    "ðŸ“Š Calculate DCA â€” simulate recurring contributions.\n"
-    "âš–ï¸ Compare Assets â€” apply one strategy independently to several assets.\n"
-    "ðŸ’° DCA vs Lump Sum â€” compare equal total capital.\n"
-    "ðŸ“ˆ Current Prices â€” view a provider snapshot, not a streaming quote.\n\n"
+    "ℹ️ Help\n\n"
+    "📊 Calculate DCA — simulate recurring contributions.\n"
+    "⚖️ Compare Assets — apply one strategy independently to several assets.\n"
+    "💰 DCA vs Lump Sum — compare equal total capital.\n"
+    "📈 Current Prices — view a provider snapshot, not a streaming quote.\n\n"
     "Choose a period preset or use Custom Dates. Historical data from yfinance "
     "can be delayed, incomplete, or provider-adjusted.\n\n"
     "GLD, SLV, and PPLT are tradable ETF proxies for gold, silver, and platinum.\n\n"

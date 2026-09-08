@@ -86,7 +86,7 @@ async def handle_calendar(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     await query.answer()
     target = calendar["target"]
     flow[f"{target}_date"] = selected
-    await query.edit_message_text(f"âœ… {target.title()} date: {selected.isoformat()}")
+    await query.edit_message_text(f"✅ {target.title()} date: {selected.isoformat()}")
     if target == "start":
         calendar["target"] = "end"
         await query.message.reply_text(

@@ -181,6 +181,15 @@ def get_db():
         session.close()
 
 
+def _local_dev_auth_enabled() -> bool:
+    return os.getenv("LOCAL_DEV_AUTH_BYPASS", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
 def require_telegram_user(
     init_data: Annotated[
         str | None,
@@ -189,6 +198,15 @@ def require_telegram_user(
         ),
     ] = None,
 ) -> str:
+    """Return authenticated Telegram user id.
+
+    Local browser development can opt in to an explicit bypass with
+    LOCAL_DEV_AUTH_BYPASS=1. The bypass is disabled by default and should never
+    be enabled in production.
+    """
+    if _local_dev_auth_enabled():
+        return os.getenv("LOCAL_DEV_USER_ID", "local-dev-user").strip() or "local-dev-user"
+
     token = os.getenv(
         "TELEGRAM_BOT_TOKEN",
         "",

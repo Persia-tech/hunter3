@@ -49,8 +49,8 @@ LOGGER = logging.getLogger(__name__)
 ) = range(7)
 DCA_CALCULATOR_KEY = "dca_calculator"
 DCA_DATA_KEY = "dca_flow"
-CALCULATE = "âœ… Calculate"
-CANCEL = "âŒ Cancel"
+CALCULATE = "✅ Calculate"
+CANCEL = "❌ Cancel"
 
 FREQUENCY_LABELS = {
     "Daily": DCAFrequency.DAILY,
@@ -161,7 +161,7 @@ async def select_period(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     flow = _flow(context)
     flow["start_date"], flow["end_date"] = start, end
     await update.effective_message.reply_text(
-        f"Period: {start.isoformat()} â†’ {end.isoformat()}\n\nChoose an investment frequency:",
+        f"Period: {start.isoformat()} → {end.isoformat()}\n\nChoose an investment frequency:",
         reply_markup=_frequency_keyboard(),
     )
     return SELECT_FREQUENCY
@@ -190,7 +190,7 @@ async def enter_start_date(
         if calendar:
             calendar["target"] = "end"
             await update.effective_message.reply_text(
-                f"âœ… Start date: {entered_date.isoformat()}\n\nChoose end date. "
+                f"✅ Start date: {entered_date.isoformat()}\n\nChoose end date. "
                 "You can also type YYYY-MM-DD.",
                 reply_markup=build_year_picker(today.year, max_date=today),
             )
@@ -267,7 +267,7 @@ async def enter_amount(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     confirmation = (
         "Please confirm:\n\n"
         f"Asset: {asset.display_name} ({asset.symbol})\n"
-        f"Period: {flow['start_date'].isoformat()} â†’ {flow['end_date'].isoformat()}\n"
+        f"Period: {flow['start_date'].isoformat()} → {flow['end_date'].isoformat()}\n"
         f"Frequency: {flow['frequency'].value.title()}\n"
         f"Investment: {format_currency(amount)} per period"
     )
@@ -375,7 +375,7 @@ async def menu_from_dca(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     _clear_flow(context)
     if update.effective_message:
         await update.effective_message.reply_text(
-            "Main menu â€” choose an option:", reply_markup=build_main_menu()
+            "Main menu — choose an option:", reply_markup=build_main_menu()
         )
     return ConversationHandler.END
 
